@@ -161,15 +161,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // 6. Dynamic Changelog / Updates System
     const updatesData = [
         {
+            version: "v3.0.0",
+            date: "Julio 2026",
+            title: "Lanzamiento Unificado (MXP Suite v3.0.0)",
+            changes: [
+                { type: "new", text: "<strong>Fusión de Suite Completa:</strong> MXP Downloader, Converter y Compressor unificados en un único ejecutable optimizado." },
+                { type: "new", text: "<strong>Compresor Integrado:</strong> Sección dedicada a la reducción de tamaño de videos (presets WhatsApp/Discord), audio e imágenes." },
+                { type: "optimize", text: "<strong>Reducción drástica de Peso:</strong> Exclusión de módulos redundantes y eliminación de ffprobe, bajando el ZIP final de 139 MB a solo 78.4 MB." },
+                { type: "optimize", text: "<strong>Descargas en Paralelo:</strong> Soporte para descargar hasta 3 videos concurrentemente con barra de progreso amarilla individual." },
+                { type: "fix", text: "<strong>Estabilidad y Caché:</strong> Corrección del parpadeo con URLs inválidas y guardado persistente de miniaturas." }
+            ]
+        },
+        {
             version: "v2.0.0",
             date: "Julio 2026",
-            title: "Lanzamiento Unificado (MXP Suite)",
+            title: "Lanzamiento Inicial (MXP Suite Beta)",
             changes: [
-                { type: "new", text: "<strong>MXP Compressor integrado:</strong> Sección dedicada a reducir tamaño de video (WhatsApp/Discord presets), audio e imágenes de forma local." },
-                { type: "new", text: "<strong>Descargas en paralelo:</strong> Descarga hasta 3 videos de forma concurrente con monitoreo individual." },
-                { type: "optimize", text: "<strong>Filtro selectivo en búsqueda:</strong> El explorador local filtra automáticamente las extensiones según la categoría elegida (Video, Audio, Imagen)." },
-                { type: "optimize", text: "<strong>Compresión CPU inteligente:</strong> Proceso ejecutado en prioridad baja para mantener la fluidez total de tu PC." },
-                { type: "fix", text: "<strong>Persistencia de miniaturas:</strong> Se corrigió el error de memoria en Windows y se agregaron esquemas de fallback para URLs relativas." }
+                { type: "new", text: "<strong>Conversión local por lotes:</strong> Soporte inicial para cambiar de formato videos y audios de manera rápida y privada." },
+                { type: "new", text: "<strong>Tratamiento Drag & Drop:</strong> Arrastra archivos locales a la ventana de la app para agregarlos a la cola de trabajo." }
             ]
         },
         {
@@ -181,15 +190,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 { type: "optimize", text: "<strong>Control de descargas individuales:</strong> Botón ✕ al lado de cada tarea para abortar descargas sin parar las demás." },
                 { type: "fix", text: "<strong>Detección de plataformas:</strong> Corrección en el parser de enlaces de TikTok e Instagram Reels." }
             ]
-        },
-        {
-            version: "v1.5.0",
-            date: "Marzo 2026",
-            title: "Lanzamiento de MXP Converter",
-            changes: [
-                { type: "new", text: "<strong>Conversión local por lotes:</strong> Soporte inicial para cambiar de formato videos y audios de manera rápida y privada." },
-                { type: "new", text: "<strong>Tratamiento Drag & Drop:</strong> Arrastra archivos locales a la ventana de la app para agregarlos a la cola de trabajo." }
-            ]
         }
     ];
 
@@ -198,12 +198,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (changelogNav && changelogDisplay) {
         let activeVersion = updatesData[0].version;
+        let autoplayTimer = null;
+        let isHovered = false;
 
         const renderChangelog = () => {
             // Render navigation buttons
             changelogNav.innerHTML = updatesData.map(item => `
                 <button class="changelog-tab ${item.version === activeVersion ? 'active' : ''}" data-version="${item.version}">
-                    <span class="changelog-tab-ver">${item.version}</span>
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <span class="changelog-tab-ver">${item.version}</span>
+                        ${item.version === 'v3.0.0' ? '<span class="latest-badge" style="background: var(--accent-yellow); color: var(--bg-main); font-size: 10px; padding: 2px 8px; border-radius: 20px; font-weight: 800; text-transform: uppercase; font-family: inherit; box-shadow: 0 0 8px rgba(255, 230, 0, 0.4);">Actual</span>' : ''}
+                    </div>
                     <span class="changelog-tab-date">${item.date}</span>
                 </button>
             `).join('');
@@ -239,12 +244,49 @@ document.addEventListener('DOMContentLoaded', () => {
                             renderChangelog();
                             changelogDisplay.classList.remove('switching');
                         }, 200);
+                        // Reset automatic transition timer on manual user interaction
+                        startAutoplay();
                     }
                 });
             });
         };
 
-        // Initial render
+        const startAutoplay = () => {
+            stopAutoplay();
+            autoplayTimer = setInterval(() => {
+                if (isHovered) return;
+                const currentIndex = updatesData.findIndex(item => item.version === activeVersion);
+                const nextIndex = (currentIndex + 1) % updatesData.length;
+                activeVersion = updatesData[nextIndex].version;
+                
+                changelogDisplay.classList.add('switching');
+                setTimeout(() => {
+                    renderChangelog();
+                    changelogDisplay.classList.remove('switching');
+                }, 200);
+            }, 5000); // Cycles every 5 seconds
+        };
+
+        const stopAutoplay = () => {
+            if (autoplayTimer) {
+                clearInterval(autoplayTimer);
+                autoplayTimer = null;
+            }
+        };
+
+        // Pause autoplay on hover of the changelog section
+        const changelogSection = document.querySelector('.changelog-container');
+        if (changelogSection) {
+            changelogSection.addEventListener('mouseenter', () => {
+                isHovered = true;
+            });
+            changelogSection.addEventListener('mouseleave', () => {
+                isHovered = false;
+            });
+        }
+
+        // Initial render & timer start
         renderChangelog();
+        startAutoplay();
     }
 });
