@@ -99,87 +99,48 @@
                     <p class="section-subtitle">Herramientas ligeras e independientes diseñadas con una interfaz moderna, limpia e intuitiva.</p>
                 </div>
 
-                <div class="apps-grid">
-                    <!-- App 1: MXP Downloader -->
-                    <div class="app-card">
-                        <div class="app-icon-wrapper">
-                            <svg class="app-icon" viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="12" y1="5" x2="12" y2="19"></line>
-                                <polyline points="19 12 12 19 5 12"></polyline>
+                <div class="apps-grid" style="display: flex; justify-content: center; max-width: 800px; margin: 0 auto;">
+                    <!-- App: MXP Suite Unificada -->
+                    <div class="app-card" style="width: 100%;">
+                        <div class="app-icon-wrapper" style="background: linear-gradient(135deg, var(--accent-yellow) 0%, #ff8c00 100%);">
+                            <svg class="app-icon" viewBox="0 0 24 24" width="40" height="40" stroke="#000000" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="3" width="7" height="9"></rect>
+                                <rect x="14" y="3" width="7" height="5"></rect>
+                                <rect x="14" y="12" width="7" height="9"></rect>
+                                <rect x="3" y="16" width="7" height="5"></rect>
                             </svg>
                         </div>
-                        <div class="app-status">v1.2.0 Stable</div>
-                        <h3 class="app-title">MXP Downloader</h3>
-                        <p class="app-description">Descarga videos, audio y listas de reproducción completas de tus plataformas favoritas en alta definición y con la máxima velocidad disponible.</p>
+                        <div class="app-status">v2.0.0 Stable (Todo-en-Uno)</div>
+                        <h3 class="app-title">MXP Suite</h3>
+                        <p class="app-description">Nuestra aplicación definitiva que unifica **MXP Downloader** y **MXP Converter** en una sola interfaz fluida, ultra rápida y de baja huella. Todo lo que necesitas para gestionar descargas y conversión de medios locales de manera segura.</p>
                         
-                        <ul class="app-features">
-                            <li>
-                                <svg class="feat-check" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Descarga en 1080p, 4K y 8K
-                            </li>
-                            <li>
-                                <svg class="feat-check" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Extracción de audio en MP3 de alta fidelidad
-                            </li>
-                            <li>
-                                <svg class="feat-check" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Soporte para descargas en lote (playlists)
-                            </li>
-                            <li>
-                                <svg class="feat-check" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Detección inteligente de portapapeles
-                            </li>
-                        </ul>
-
-                        <div class="app-download-area">
-                            <!-- CHANGE VALUE OF href WITH YOUR GITHUB RELEASE URL -->
-                            <a href="https://github.com/mxp09/mxp-suite/releases/download/v1.0.0/MXP_Downloader_Pro_v1.0.zip" class="btn btn-primary btn-block download-btn">
-                                <svg class="icon" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                Descargar para Windows
-                            </a>
-                            <div class="download-meta">ZIP portable • ~135 MB • Libre de virus</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; text-align: left;">
+                            <div>
+                                <h4 style="color: var(--accent-yellow); font-size: 14px; margin-bottom: 8px;">📥 Descargador Multimedia</h4>
+                                <ul class="app-features" style="margin: 0; padding: 0;">
+                                    <li>Descarga en 1080p, 4K y 8K</li>
+                                    <li>Extracción de audio en MP3 de alta fidelidad</li>
+                                    <li>Soporte para enlaces en lote (Playlists)</li>
+                                    <li>Barra de recorte de video amarilla interactiva</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 style="color: var(--accent-yellow); font-size: 14px; margin-bottom: 8px;">🔄 Conversor Local Offline</h4>
+                                <ul class="app-features" style="margin: 0; padding: 0;">
+                                    <li>Conversión 100% local y segura offline</li>
+                                    <li>Soporta MP4, MKV, AVI, MP3, WAV, WebP, PNG, JPG</li>
+                                    <li>Compresión, unión, rotación y OCR de archivos PDF</li>
+                                    <li>Conversor automático multiarchivo</li>
+                                </ul>
+                            </div>
                         </div>
-                    </div>
 
-                    <!-- App 2: MXP Converter -->
-                    <div class="app-card">
-                        <div class="app-icon-wrapper">
-                            <svg class="app-icon" viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="23 4 23 10 17 10"></polyline>
-                                <polyline points="1 20 1 14 7 14"></polyline>
-                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                            </svg>
-                        </div>
-                        <div class="app-status">v1.0.5 Stable</div>
-                        <h3 class="app-title">MXP Converter</h3>
-                        <p class="app-description">Convierte instantáneamente imágenes, videos y pistas de audio entre múltiples formatos de manera local, protegiendo al 100% la privacidad de tus archivos.</p>
-                        
-                        <ul class="app-features">
-                            <li>
-                                <svg class="feat-check" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Conversión instantánea sin subidas a internet
-                            </li>
-                            <li>
-                                <svg class="feat-check" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Soporta MP4, MKV, AVI, MP3, WAV, WebP, PNG, JPG
-                            </li>
-                            <li>
-                                <svg class="feat-check" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Compresión de archivos integrada sin pérdida
-                            </li>
-                            <li>
-                                <svg class="feat-check" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                Arrastrar y soltar (Drag and Drop) intuitivo
-                            </li>
-                        </ul>
-
-                        <div class="app-download-area">
-                            <!-- CHANGE VALUE OF href WITH YOUR GITHUB RELEASE URL -->
-                            <a href="https://github.com/mxp09/mxp-suite/releases/download/v1.0.0/MXP_Converter_v1.0.5.zip" class="btn btn-primary btn-block download-btn">
+                        <div class="app-download-area" style="margin-top: 25px;">
+                            <a href="https://github.com/mxp09/mxp-suite/releases/download/v2.0.0/MXP_Suite_v2.0.0.zip" class="btn btn-primary btn-block download-btn">
                                 <svg class="icon" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                Descargar para Windows
+                                Descargar MXP Suite Unificada
                             </a>
-                            <div class="download-meta">ZIP portable • ~131 MB • 100% Offline</div>
+                            <div class="download-meta">ZIP portable para Windows • ~35 MB (Sin PyQt6) • 100% Seguro y Offline</div>
                         </div>
                     </div>
                 </div>
@@ -264,8 +225,7 @@
             <div class="footer-links">
                 <div class="footer-group">
                     <h4 class="footer-title">Aplicaciones</h4>
-                    <a href="#apps" class="footer-link">MXP Downloader</a>
-                    <a href="#apps" class="footer-link">MXP Converter</a>
+                    <a href="#apps" class="footer-link">MXP Suite (Unificada)</a>
                 </div>
                 <div class="footer-group">
                     <h4 class="footer-title">Soporte</h4>
