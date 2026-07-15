@@ -157,4 +157,94 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('scroll', revealOnScroll);
     // Initial check on load
     setTimeout(revealOnScroll, 100);
+
+    // 6. Dynamic Changelog / Updates System
+    const updatesData = [
+        {
+            version: "v2.0.0",
+            date: "Julio 2026",
+            title: "Lanzamiento Unificado (MXP Suite)",
+            changes: [
+                { type: "new", text: "<strong>MXP Compressor integrado:</strong> Sección dedicada a reducir tamaño de video (WhatsApp/Discord presets), audio e imágenes de forma local." },
+                { type: "new", text: "<strong>Descargas en paralelo:</strong> Descarga hasta 3 videos de forma concurrente con monitoreo individual." },
+                { type: "optimize", text: "<strong>Filtro selectivo en búsqueda:</strong> El explorador local filtra automáticamente las extensiones según la categoría elegida (Video, Audio, Imagen)." },
+                { type: "optimize", text: "<strong>Compresión CPU inteligente:</strong> Proceso ejecutado en prioridad baja para mantener la fluidez total de tu PC." },
+                { type: "fix", text: "<strong>Persistencia de miniaturas:</strong> Se corrigió el error de memoria en Windows y se agregaron esquemas de fallback para URLs relativas." }
+            ]
+        },
+        {
+            version: "v1.8.0",
+            date: "Mayo 2026",
+            title: "Mejoras de Estabilidad en Downloader",
+            changes: [
+                { type: "new", text: "<strong>Extracción local de Audio:</strong> Convierte videos descargados a MP3/WAV de alta fidelidad directamente en la suite." },
+                { type: "optimize", text: "<strong>Control de descargas individuales:</strong> Botón ✕ al lado de cada tarea para abortar descargas sin parar las demás." },
+                { type: "fix", text: "<strong>Detección de plataformas:</strong> Corrección en el parser de enlaces de TikTok e Instagram Reels." }
+            ]
+        },
+        {
+            version: "v1.5.0",
+            date: "Marzo 2026",
+            title: "Lanzamiento de MXP Converter",
+            changes: [
+                { type: "new", text: "<strong>Conversión local por lotes:</strong> Soporte inicial para cambiar de formato videos y audios de manera rápida y privada." },
+                { type: "new", text: "<strong>Tratamiento Drag & Drop:</strong> Arrastra archivos locales a la ventana de la app para agregarlos a la cola de trabajo." }
+            ]
+        }
+    ];
+
+    const changelogNav = document.getElementById('changelog-nav');
+    const changelogDisplay = document.getElementById('changelog-display');
+
+    if (changelogNav && changelogDisplay) {
+        let activeVersion = updatesData[0].version;
+
+        const renderChangelog = () => {
+            // Render navigation buttons
+            changelogNav.innerHTML = updatesData.map(item => `
+                <button class="changelog-tab ${item.version === activeVersion ? 'active' : ''}" data-version="${item.version}">
+                    <span class="changelog-tab-ver">${item.version}</span>
+                    <span class="changelog-tab-date">${item.date}</span>
+                </button>
+            `).join('');
+
+            // Get active version details
+            const data = updatesData.find(item => item.version === activeVersion);
+
+            // Render display card
+            changelogDisplay.innerHTML = `
+                <div class="changelog-header">
+                    <h3 class="changelog-title">${data.title}</h3>
+                    <span class="changelog-date">${data.date}</span>
+                </div>
+                <ul class="changelog-list">
+                    ${data.changes.map(c => `
+                        <li class="changelog-item">
+                            <span class="changelog-badge ${c.type}">${c.type === 'new' ? 'Nuevo' : c.type === 'optimize' ? 'Optimiz' : 'Fix'}</span>
+                            <span class="changelog-text">${c.text}</span>
+                        </li>
+                    `).join('')}
+                </ul>
+            `;
+
+            // Bind click events to tabs
+            const tabs = document.querySelectorAll('.changelog-tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const selectedVer = tab.getAttribute('data-version');
+                    if (selectedVer !== activeVersion) {
+                        activeVersion = selectedVer;
+                        changelogDisplay.classList.add('switching');
+                        setTimeout(() => {
+                            renderChangelog();
+                            changelogDisplay.classList.remove('switching');
+                        }, 200);
+                    }
+                });
+            });
+        };
+
+        // Initial render
+        renderChangelog();
+    }
 });
