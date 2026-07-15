@@ -9,6 +9,7 @@ import queue
 import customtkinter as ctk
 
 from gui.theme import Colors, Fonts, Spacing, Window, Radius
+from core.i18n import _, get_current_language, save_config_language
 from gui.components import (
     HeaderFrame,
     URLInputFrame,
@@ -162,6 +163,30 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
             command=self._show_history
         )
         self.history_btn.pack(pady=Spacing.SM)
+
+        # Cargar imágenes de banderas
+        from PIL import Image
+        from core.utils import get_resource_path
+        es_flag_path = get_resource_path("assets/es.png")
+        us_flag_path = get_resource_path("assets/us.png")
+        self.es_flag_img = ctk.CTkImage(light_image=Image.open(es_flag_path), dark_image=Image.open(es_flag_path), size=(28, 20))
+        self.us_flag_img = ctk.CTkImage(light_image=Image.open(us_flag_path), dark_image=Image.open(us_flag_path), size=(28, 20))
+
+        # Botón de Cambio de Idioma (Flag)
+        current_lang = get_current_language()
+        flag_img = self.es_flag_img if current_lang == "es" else self.us_flag_img
+        self.btn_lang = ctk.CTkButton(
+            self.sidebar,
+            text="",
+            image=flag_img,
+            fg_color="transparent",
+            hover_color=Colors.BG_HOVER,
+            corner_radius=Radius.MD,
+            width=48,
+            height=48,
+            command=self._toggle_language
+        )
+        self.btn_lang.pack(side="bottom", pady=(Spacing.SM, Spacing.LG))
 
         # ── MAIN CONTENT (SCROLLABLE) ──
         self.main_container = ctk.CTkScrollableFrame(
@@ -519,3 +544,33 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
             # Si ya no quedan descargas activas, restaurar el botón principal
             if not self.active_jobs:
                 self.download_btn.set_downloading(False)
+
+    def _toggle_language(self):
+        """Alterna el idioma entre español e inglés."""
+        current = get_current_language()
+        new_lang = "en" if current == "es" else "es"
+        save_config_language(new_lang)
+        
+        # Actualizar imagen del botón
+        flag_img = self.es_flag_img if new_lang == "es" else self.us_flag_img
+        self.btn_lang.configure(image=flag_img)
+        
+        # Actualizar todos los textos en caliente
+        self.update_ui_text()
+
+    def update_ui_text(self):
+        """Actualiza todos los textos traducibles de la aplicación."""
+        # Actualizar componentes de la UI
+        self.header.update_ui_text()
+        self.url_input.update_ui_text()
+        self.thumbnail_preview.update_ui_text()
+        self.quality_selector.update_ui_text()
+        self.output_folder.update_ui_text()
+        self.trimming_settings.update_ui_text()
+        self.cookies_settings.update_ui_text()
+        self.download_btn.update_ui_text()
+        self.progress_panel.update_ui_text()
+        self.footer.update_ui_text()
+        self.converter_panel.update_ui_text()
+        self.compressor_panel.update_ui_text()
+

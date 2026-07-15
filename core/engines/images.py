@@ -32,9 +32,34 @@ class ImageEngine:
                  
                  if output_format in ["JPEG", "WEBP"]:
                      img.save(output_path, output_format, quality=quality)
+                 elif output_format == "PNG":
+                     compress_level = 6
+                     if compression == "Media (Buena Calidad)":
+                         compress_level = 7
+                     elif compression == "Alta (Para Redes Sociales)":
+                         compress_level = 8
+                     elif compression == "Extrema":
+                         compress_level = 9
+                     
+                     if compression == "Extrema" and img.mode in ("RGB", "RGBA"):
+                         try:
+                             img = img.quantize(colors=256)
+                         except Exception:
+                             pass
+                     img.save(output_path, output_format, optimize=True, compress_level=compress_level)
                  else:
                      img.save(output_path, output_format)
                      
+             if os.path.exists(output_path):
+                 orig_size = os.path.getsize(input_path)
+                 comp_size = os.path.getsize(output_path)
+                 if comp_size >= orig_size:
+                     import shutil
+                     try:
+                         shutil.copy2(input_path, output_path)
+                         log_callback(f"[IMAGEN] El archivo original ya estaba óptimamente comprimido. Se conservó el tamaño original.")
+                     except Exception:
+                         pass
              log_callback(f"[Éxito] Generado: {os.path.basename(output_path)}")
              return output_path
          except Exception as e:

@@ -109,6 +109,16 @@ class MediaEngine:
             log_callback(f"[VIDEO] Procesando {os.path.basename(input_path)} → {target_format.upper()} (Preset: {compression})...")
             rc, err_lines = _run_ffmpeg_with_progress(cmd, log_callback, progress_callback)
             if rc == 0:
+                if os.path.exists(output_path):
+                    orig_size = os.path.getsize(input_path)
+                    comp_size = os.path.getsize(output_path)
+                    if comp_size >= orig_size:
+                        import shutil
+                        try:
+                            shutil.copy2(input_path, output_path)
+                            log_callback(f"[VIDEO] El archivo original ya estaba óptimamente comprimido. Se conservó el tamaño original.")
+                        except Exception:
+                            pass
                 log_callback(f"[✓ Éxito] Generado: {os.path.basename(output_path)}")
                 return output_path
             else:
@@ -138,6 +148,12 @@ class MediaEngine:
             cmd.extend(["-b:a", bitrate or "320k"])
         elif output_format == "wav":
             cmd.extend(["-c:a", "pcm_s16le"])
+            if bitrate == "96k":
+                cmd.extend(["-ar", "22050", "-ac", "1"])
+            elif bitrate == "64k":
+                cmd.extend(["-ar", "11025", "-ac", "1"])
+            else:
+                cmd.extend(["-ar", "32000"])
         elif output_format == "flac":
             cmd.extend(["-c:a", "flac"])
         else:
@@ -149,6 +165,16 @@ class MediaEngine:
             log_callback(f"[AUDIO] Procesando {os.path.basename(input_path)} → {target_format.upper()} (Bitrate: {bitrate or 'Original'})...")
             rc, err_lines = _run_ffmpeg_with_progress(cmd, log_callback, progress_callback)
             if rc == 0:
+                if os.path.exists(output_path):
+                    orig_size = os.path.getsize(input_path)
+                    comp_size = os.path.getsize(output_path)
+                    if comp_size >= orig_size:
+                        import shutil
+                        try:
+                            shutil.copy2(input_path, output_path)
+                            log_callback(f"[AUDIO] El archivo original ya estaba óptimamente comprimido. Se conservó el tamaño original.")
+                        except Exception:
+                            pass
                 log_callback(f"[✓ Éxito] Generado: {os.path.basename(output_path)}")
                 return output_path
             else:

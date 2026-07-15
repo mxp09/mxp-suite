@@ -12,6 +12,7 @@ import customtkinter as ctk
 
 from gui.theme import Colors, Fonts, Spacing, Radius, PLATFORM_COLORS
 from core.utils import detect_platform, get_platform_icon, validate_url, get_default_download_dir, get_resource_path
+from core.i18n import _, get_current_language
 from PIL import Image
 
 
@@ -82,7 +83,7 @@ class HeaderFrame(ctk.CTkFrame):
 
         self.subtitle_label = ctk.CTkLabel(
             title_text,
-            text="Descarga multimedia con máxima fidelidad",
+            text=_("app_subtitle"),
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
             text_color=Colors.TEXT_SECONDARY,
             anchor="w",
@@ -113,6 +114,9 @@ class HeaderFrame(ctk.CTkFrame):
             )
             badge.pack(side="left", padx=(0, Spacing.SM))
 
+    def update_ui_text(self):
+        self.subtitle_label.configure(text=_("app_subtitle"))
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  URL INPUT
@@ -130,12 +134,13 @@ class URLInputFrame(ctk.CTkFrame):
         label_frame = ctk.CTkFrame(self, fg_color="transparent")
         label_frame.pack(fill="x", padx=Spacing.LG, pady=(Spacing.MD, Spacing.XS))
 
-        ctk.CTkLabel(
+        self.label = ctk.CTkLabel(
             label_frame,
-            text="URL del video",
+            text=_("url_label"),
             font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"),
             text_color=Colors.TEXT_PRIMARY,
-        ).pack(side="left")
+        )
+        self.label.pack(side="left")
 
         self.platform_badge = ctk.CTkLabel(
             label_frame,
@@ -161,7 +166,7 @@ class URLInputFrame(ctk.CTkFrame):
 
         self.url_entry = ctk.CTkEntry(
             input_frame,
-            placeholder_text="Pega aquí la URL del video...",
+            placeholder_text=_("url_placeholder"),
             font=(Fonts.FAMILY, Fonts.SIZE_BODY),
             text_color=Colors.TEXT_PRIMARY,
             placeholder_text_color=Colors.TEXT_MUTED,
@@ -176,7 +181,7 @@ class URLInputFrame(ctk.CTkFrame):
 
         self.paste_btn = ctk.CTkButton(
             input_frame,
-            text="📋 Pegar",
+            text=_("btn_paste"),
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"),
             fg_color=Colors.BG_TERTIARY,
             hover_color=Colors.BG_HOVER,
@@ -202,6 +207,12 @@ class URLInputFrame(ctk.CTkFrame):
         )
         self.clear_btn.pack(side="right", pady=Spacing.SM)
         self.clear_btn.pack_forget()  # Oculto hasta que haya texto
+
+    def update_ui_text(self):
+        self.label.configure(text=_("url_label"))
+        # Hack to update entry placeholder dynamically
+        self.url_entry.configure(placeholder_text=_("url_placeholder"))
+        self.paste_btn.configure(text=_("btn_paste"))
 
     def _paste_from_clipboard(self):
         """Pega contenido del portapapeles."""
@@ -281,12 +292,13 @@ class QualitySelector(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
 
-        ctk.CTkLabel(
+        self.main_label = ctk.CTkLabel(
             self,
-            text="Calidad y Formato",
+            text=_("quality_title"),
             font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"),
             text_color=Colors.TEXT_PRIMARY,
-        ).pack(anchor="w", padx=Spacing.LG, pady=(Spacing.MD, Spacing.XS))
+        )
+        self.main_label.pack(anchor="w", padx=Spacing.LG, pady=(Spacing.MD, Spacing.XS))
 
         selector_frame = ctk.CTkFrame(
             self,
@@ -302,7 +314,7 @@ class QualitySelector(ctk.CTkFrame):
         # ── SECCIÓN VIDEO ──
         self.video_radio = ctk.CTkRadioButton(
             selector_frame,
-            text="🎬  Video (Imagen + Sonido)",
+            text="🎬  " + _("format_both"),
             font=(Fonts.FAMILY, Fonts.SIZE_BODY),
             text_color=Colors.TEXT_PRIMARY,
             fg_color=Colors.ACCENT_PRIMARY,
@@ -318,15 +330,15 @@ class QualitySelector(ctk.CTkFrame):
         self.video_options_frame.pack(fill="x", padx=(Spacing.LG + 24, Spacing.LG), pady=(0, Spacing.SM))
 
         # Dropdown: Resolución
-        res_label = ctk.CTkLabel(self.video_options_frame, text="Res:", font=(Fonts.FAMILY, Fonts.SIZE_SMALL), text_color=Colors.TEXT_SECONDARY)
-        res_label.pack(side="left", padx=(0, 5))
-        self.resolution_var = ctk.StringVar(value="⚡ Máxima Calidad")
-        self.resolution_menu = self._create_menu(self.video_options_frame, self.resolution_var, [label for label, _ in self.RESOLUTION_OPTIONS], width=140)
+        self.res_label = ctk.CTkLabel(self.video_options_frame, text=_("res_label"), font=(Fonts.FAMILY, Fonts.SIZE_SMALL), text_color=Colors.TEXT_SECONDARY)
+        self.res_label.pack(side="left", padx=(0, 5))
+        self.resolution_var = ctk.StringVar(value="⚡ " + _("res_best"))
+        self.resolution_menu = self._create_menu(self.video_options_frame, self.resolution_var, ["⚡ " + _("res_best")] + [label for label, _ in self.RESOLUTION_OPTIONS[1:]], width=140)
         self.resolution_menu.pack(side="left", padx=(0, 10))
 
         # Dropdown: Formato Video
-        fmt_v_label = ctk.CTkLabel(self.video_options_frame, text="Formato:", font=(Fonts.FAMILY, Fonts.SIZE_SMALL), text_color=Colors.TEXT_SECONDARY)
-        fmt_v_label.pack(side="left", padx=(0, 5))
+        self.fmt_v_label = ctk.CTkLabel(self.video_options_frame, text=_("format_label"), font=(Fonts.FAMILY, Fonts.SIZE_SMALL), text_color=Colors.TEXT_SECONDARY)
+        self.fmt_v_label.pack(side="left", padx=(0, 5))
         self.video_format_var = ctk.StringVar(value="MP4")
         self.video_format_menu = self._create_menu(self.video_options_frame, self.video_format_var, self.VIDEO_FORMATS, width=80)
         self.video_format_menu.pack(side="left")
@@ -338,7 +350,7 @@ class QualitySelector(ctk.CTkFrame):
         # ── SECCIÓN AUDIO ──
         self.audio_radio = ctk.CTkRadioButton(
             selector_frame,
-            text="🎵  Solo Audio",
+            text="🎵  " + _("format_audio"),
             font=(Fonts.FAMILY, Fonts.SIZE_BODY),
             text_color=Colors.TEXT_PRIMARY,
             fg_color=Colors.ACCENT_PRIMARY,
@@ -353,14 +365,14 @@ class QualitySelector(ctk.CTkFrame):
         self.audio_options_frame = ctk.CTkFrame(selector_frame, fg_color="transparent")
         
         # Dropdown: Formato Audio
-        fmt_a_label = ctk.CTkLabel(self.audio_options_frame, text="Formato:", font=(Fonts.FAMILY, Fonts.SIZE_SMALL), text_color=Colors.TEXT_SECONDARY)
-        fmt_a_label.pack(side="left", padx=(0, 5))
+        self.fmt_a_label = ctk.CTkLabel(self.audio_options_frame, text=_("format_label"), font=(Fonts.FAMILY, Fonts.SIZE_SMALL), text_color=Colors.TEXT_SECONDARY)
+        self.fmt_a_label.pack(side="left", padx=(0, 5))
         self.audio_format_var = ctk.StringVar(value="MP3")
         self.audio_format_menu = self._create_menu(self.audio_options_frame, self.audio_format_var, self.AUDIO_FORMATS, width=80, command=self._on_audio_format_change)
         self.audio_format_menu.pack(side="left", padx=(0, 10))
 
         # Dropdown: Bitrate
-        self.bitrate_label = ctk.CTkLabel(self.audio_options_frame, text="Calidad:", font=(Fonts.FAMILY, Fonts.SIZE_SMALL), text_color=Colors.TEXT_SECONDARY)
+        self.bitrate_label = ctk.CTkLabel(self.audio_options_frame, text=_("quality_title") + ":", font=(Fonts.FAMILY, Fonts.SIZE_SMALL), text_color=Colors.TEXT_SECONDARY)
         self.bitrate_label.pack(side="left", padx=(0, 5))
         self.audio_bitrate_var = ctk.StringVar(value="320 kbps")
         self.audio_bitrate_menu = self._create_menu(self.audio_options_frame, self.audio_bitrate_var, self.AUDIO_BITRATES, width=100)
@@ -426,10 +438,29 @@ class QualitySelector(ctk.CTkFrame):
     def get_resolution_key(self) -> str:
         """Retorna la key de resolución seleccionada (e.g. 'BEST', 'RES_1080')."""
         current_label = self.resolution_var.get()
+        if "Mejor Disponible" in current_label or "Best Available" in current_label or "Máxima Calidad" in current_label:
+            return "BEST"
         for label, key in self.RESOLUTION_OPTIONS:
             if label == current_label:
                 return key
         return "BEST"
+
+    def update_ui_text(self):
+        """Actualiza textos en caliente."""
+        self.main_label.configure(text=_("quality_title"))
+        self.video_radio.configure(text="🎬  " + _("format_both"))
+        self.audio_radio.configure(text="🎵  " + _("format_audio"))
+        self.res_label.configure(text=_("res_label"))
+        self.fmt_v_label.configure(text=_("format_label"))
+        self.fmt_a_label.configure(text=_("format_label"))
+        self.bitrate_label.configure(text=_("quality_title") + ":")
+        
+        # Actualizar opciones de resolución
+        best_str = "⚡ " + _("res_best")
+        current_res = self.resolution_var.get()
+        if "Mejor Disponible" in current_res or "Best Available" in current_res or "Máxima Calidad" in current_res:
+            self.resolution_var.set(best_str)
+        self.resolution_menu.configure(values=[best_str] + [label for label, _ in self.RESOLUTION_OPTIONS[1:]])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -442,12 +473,13 @@ class OutputFolderFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
 
-        ctk.CTkLabel(
+        self.label = ctk.CTkLabel(
             self,
-            text="Guardar en",
+            text=_("output_title"),
             font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"),
             text_color=Colors.TEXT_PRIMARY,
-        ).pack(anchor="w", padx=Spacing.LG, pady=(Spacing.MD, Spacing.XS))
+        )
+        self.label.pack(anchor="w", padx=Spacing.LG, pady=(Spacing.MD, Spacing.XS))
 
         folder_frame = ctk.CTkFrame(
             self,
@@ -474,7 +506,7 @@ class OutputFolderFrame(ctk.CTkFrame):
 
         self.browse_btn = ctk.CTkButton(
             folder_frame,
-            text="📂 Cambiar",
+            text=_("btn_browse"),
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"),
             fg_color=Colors.BG_TERTIARY,
             hover_color=Colors.BG_HOVER,
@@ -489,7 +521,7 @@ class OutputFolderFrame(ctk.CTkFrame):
     def _browse_folder(self):
         """Abre diálogo para seleccionar carpeta."""
         folder = filedialog.askdirectory(
-            title="Seleccionar carpeta de descarga",
+            title=_("output_title"),
             initialdir=self.folder_var.get(),
         )
         if folder:
@@ -498,6 +530,10 @@ class OutputFolderFrame(ctk.CTkFrame):
     def get_folder(self) -> str:
         """Retorna la carpeta seleccionada."""
         return self.folder_var.get()
+
+    def update_ui_text(self):
+        self.label.configure(text=_("output_title"))
+        self.browse_btn.configure(text=_("btn_browse"))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -515,7 +551,7 @@ class CookieSettingsFrame(ctk.CTkFrame):
         # ── Botón toggle ──
         self.toggle_btn = ctk.CTkButton(
             self,
-            text="🍪  Configuración de Cookies (Opcional)  ▸",
+            text="🍪  " + _("cookie_title") + "  ▸",
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
             fg_color="transparent",
             hover_color=Colors.BG_HOVER,
@@ -536,18 +572,20 @@ class CookieSettingsFrame(ctk.CTkFrame):
         )
 
         # Método 1: Desde el navegador
-        ctk.CTkLabel(
+        self.m1_label = ctk.CTkLabel(
             self.content,
-            text="Método 1: Cookies del navegador",
+            text="Método 1: Cookies del navegador" if get_current_language() == "es" else "Method 1: Browser cookies",
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"),
             text_color=Colors.TEXT_PRIMARY,
-        ).pack(anchor="w", padx=Spacing.LG, pady=(Spacing.MD, Spacing.XS))
+        )
+        self.m1_label.pack(anchor="w", padx=Spacing.LG, pady=(Spacing.MD, Spacing.XS))
 
-        self.browser_var = ctk.StringVar(value="ninguno")
-        browser_menu = ctk.CTkOptionMenu(
+        none_str = "ninguno" if get_current_language() == "es" else "none"
+        self.browser_var = ctk.StringVar(value=none_str)
+        self.browser_menu = ctk.CTkOptionMenu(
             self.content,
             variable=self.browser_var,
-            values=["ninguno", "chrome", "firefox", "edge", "brave", "opera"],
+            values=[none_str, "chrome", "firefox", "edge", "brave", "opera"],
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
             fg_color=Colors.BG_TERTIARY,
             button_color=Colors.BG_TERTIARY,
@@ -560,7 +598,7 @@ class CookieSettingsFrame(ctk.CTkFrame):
             height=34,
             width=200,
         )
-        browser_menu.pack(anchor="w", padx=Spacing.LG, pady=(0, Spacing.SM))
+        self.browser_menu.pack(anchor="w", padx=Spacing.LG, pady=(0, Spacing.SM))
 
         # Separador
         ctk.CTkFrame(
@@ -570,12 +608,13 @@ class CookieSettingsFrame(ctk.CTkFrame):
         ).pack(fill="x", padx=Spacing.LG, pady=Spacing.XS)
 
         # Método 2: Archivo cookies.txt
-        ctk.CTkLabel(
+        self.m2_label = ctk.CTkLabel(
             self.content,
-            text="Método 2: Archivo cookies.txt",
+            text="Método 2: Archivo cookies.txt" if get_current_language() == "es" else "Method 2: cookies.txt file",
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"),
             text_color=Colors.TEXT_PRIMARY,
-        ).pack(anchor="w", padx=Spacing.LG, pady=(Spacing.SM, Spacing.XS))
+        )
+        self.m2_label.pack(anchor="w", padx=Spacing.LG, pady=(Spacing.SM, Spacing.XS))
 
         file_frame = ctk.CTkFrame(self.content, fg_color="transparent")
         file_frame.pack(fill="x", padx=Spacing.LG, pady=(0, Spacing.MD))
@@ -584,7 +623,7 @@ class CookieSettingsFrame(ctk.CTkFrame):
         self.cookie_entry = ctk.CTkEntry(
             file_frame,
             textvariable=self.cookie_file_var,
-            placeholder_text="Ruta al archivo cookies.txt...",
+            placeholder_text="Ruta al archivo cookies.txt..." if get_current_language() == "es" else "Path to cookies.txt file...",
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
             text_color=Colors.TEXT_SECONDARY,
             placeholder_text_color=Colors.TEXT_MUTED,
@@ -610,22 +649,37 @@ class CookieSettingsFrame(ctk.CTkFrame):
         ).pack(side="right")
 
         # Nota
-        ctk.CTkLabel(
+        self.note_label = ctk.CTkLabel(
             self.content,
-            text="💡 Necesario para Instagram/Facebook con login",
+            text="💡 Necesario para Instagram/Facebook con login" if get_current_language() == "es" else "💡 Required for Instagram/Facebook with login",
             font=(Fonts.FAMILY, Fonts.SIZE_TINY),
             text_color=Colors.TEXT_MUTED,
-        ).pack(anchor="w", padx=Spacing.LG, pady=(0, Spacing.MD))
+        )
+        self.note_label.pack(anchor="w", padx=Spacing.LG, pady=(0, Spacing.MD))
 
     def _toggle(self):
         """Expande/colapsa el panel."""
         self._expanded = not self._expanded
+        arrow = "▾" if self._expanded else "▸"
         if self._expanded:
             self.content.pack(fill="x", padx=Spacing.LG, pady=(Spacing.XS, 0))
-            self.toggle_btn.configure(text="🍪  Configuración de Cookies (Opcional)  ▾")
+            self.toggle_btn.configure(text="🍪  " + _("cookie_title") + f"  {arrow}")
         else:
             self.content.pack_forget()
-            self.toggle_btn.configure(text="🍪  Configuración de Cookies (Opcional)  ▸")
+            self.toggle_btn.configure(text="🍪  " + _("cookie_title") + f"  {arrow}")
+
+    def update_ui_text(self):
+        arrow = "▾" if self._expanded else "▸"
+        self.toggle_btn.configure(text="🍪  " + _("cookie_title") + f"  {arrow}")
+        self.m1_label.configure(text="Método 1: Cookies del navegador" if get_current_language() == "es" else "Method 1: Browser cookies")
+        self.m2_label.configure(text="Método 2: Archivo cookies.txt" if get_current_language() == "es" else "Method 2: cookies.txt file")
+        self.cookie_entry.configure(placeholder_text="Ruta al archivo cookies.txt..." if get_current_language() == "es" else "Path to cookies.txt file...")
+        self.note_label.configure(text="💡 Necesario para Instagram/Facebook con login" if get_current_language() == "es" else "💡 Required for Instagram/Facebook with login")
+        
+        none_str = "ninguno" if get_current_language() == "es" else "none"
+        if self.browser_var.get() in ("none", "ninguno"):
+            self.browser_var.set(none_str)
+        self.browser_menu.configure(values=[none_str, "chrome", "firefox", "edge", "brave", "opera"])
 
     def _browse_cookies(self):
         """Abre diálogo para seleccionar cookies.txt."""
@@ -639,7 +693,7 @@ class CookieSettingsFrame(ctk.CTkFrame):
     def get_cookies_browser(self) -> Optional[str]:
         """Retorna el navegador seleccionado para cookies, o None."""
         val = self.browser_var.get()
-        return val if val != "ninguno" else None
+        return val if val not in ("ninguno", "none") else None
 
     def get_cookies_file(self) -> Optional[str]:
         """Retorna la ruta al archivo cookies.txt, o None."""
@@ -666,7 +720,7 @@ class DownloadButton(ctk.CTkFrame):
 
         self.download_btn = ctk.CTkButton(
             btn_frame,
-            text="⬇  Descargar Video",
+            text="⬇  " + _("btn_download_now"),
             font=(Fonts.FAMILY, Fonts.SIZE_SUBTITLE, "bold"),
             fg_color=Colors.ACCENT_PRIMARY,
             hover_color=Colors.BUTTON_HOVER,
@@ -688,13 +742,13 @@ class DownloadButton(ctk.CTkFrame):
         self._is_downloading = downloading
         if downloading:
             self.download_btn.configure(
-                text="✕  Cancelar Descarga",
+                text="✕  " + ("Cancel Download" if get_current_language() == "en" else "Cancelar Descarga"),
                 fg_color=Colors.ERROR,
                 hover_color="#c0392b",
             )
         else:
             self.download_btn.configure(
-                text="⬇  Descargar Video",
+                text="⬇  " + _("btn_download_now"),
                 fg_color=Colors.ACCENT_PRIMARY,
                 hover_color=Colors.BUTTON_HOVER,
             )
@@ -705,6 +759,9 @@ class DownloadButton(ctk.CTkFrame):
             state="normal" if enabled else "disabled",
             fg_color=Colors.ACCENT_PRIMARY if enabled else Colors.BUTTON_DISABLED,
         )
+
+    def update_ui_text(self):
+        self.set_downloading(self._is_downloading)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -787,6 +844,9 @@ class DownloadProgressItem(ctk.CTkFrame):
         if eta: det += f"│ ⏱ {eta}"
         self.details_label.configure(text=det)
 
+    def update_ui_text(self):
+        pass
+
 
 class ProgressPanel(ctk.CTkFrame):
     """Contenedor de progreso de descargas múltiples."""
@@ -839,6 +899,10 @@ class ProgressPanel(ctk.CTkFrame):
         if url not in self.items:
             self.add_job(url, title or url)
         self.items[url].update_data(status, percent, speed, eta, title)
+
+    def update_ui_text(self):
+        for item in self.items.values():
+            item.update_ui_text()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1071,7 +1135,8 @@ class TrimmingFrame(ctk.CTkFrame):
         # Tiempo Inicio
         start_frame = ctk.CTkFrame(self.inputs_row, fg_color="transparent")
         start_frame.pack(side="left", padx=(0, Spacing.LG))
-        ctk.CTkLabel(start_frame, text="Inicio (HH:MM:SS):", font=label_font).pack(anchor="w")
+        self.start_label = ctk.CTkLabel(start_frame, text="Inicio (HH:MM:SS):" if get_current_language() == "es" else "Start (HH:MM:SS):", font=label_font)
+        self.start_label.pack(anchor="w")
         self.start_entry = ctk.CTkEntry(start_frame, placeholder_text="00:00:00", **input_args)
         self.start_entry.pack(pady=(Spacing.XS, 0))
         self.start_entry.bind("<KeyRelease>", lambda e: self.validate_times())
@@ -1079,7 +1144,8 @@ class TrimmingFrame(ctk.CTkFrame):
         # Tiempo Fin
         end_frame = ctk.CTkFrame(self.inputs_row, fg_color="transparent")
         end_frame.pack(side="left", padx=(0, Spacing.LG))
-        ctk.CTkLabel(end_frame, text="Fin (HH:MM:SS):", font=label_font).pack(anchor="w")
+        self.end_label = ctk.CTkLabel(end_frame, text="Fin (HH:MM:SS):" if get_current_language() == "es" else "End (HH:MM:SS):", font=label_font)
+        self.end_label.pack(anchor="w")
         self.end_entry = ctk.CTkEntry(end_frame, placeholder_text="00:05:00", **input_args)
         self.end_entry.pack(pady=(Spacing.XS, 0))
         self.end_entry.bind("<KeyRelease>", lambda e: self.validate_times())
@@ -1131,12 +1197,30 @@ class TrimmingFrame(ctk.CTkFrame):
 
     def _toggle(self):
         self._expanded = not self._expanded
+        arrow = "▾" if self._expanded else "▸"
+        self.toggle_btn.configure(text="✂️  " + _("trim_title") + f"  {arrow}")
         if self._expanded:
             self.content.pack(fill="x", padx=Spacing.LG, pady=(Spacing.XS, 0))
-            self.toggle_btn.configure(text="✂️  Recortar Video (Opcional)  ▾")
         else:
             self.content.pack_forget()
-            self.toggle_btn.configure(text="✂️  Recortar Video (Opcional)  ▸")
+
+    def update_ui_text(self):
+        arrow = "▾" if self._expanded else "▸"
+        self.toggle_btn.configure(text="✂️  " + _("trim_title") + f"  {arrow}")
+        self.start_label.configure(text="Inicio (HH:MM:SS):" if get_current_language() == "es" else "Start (HH:MM:SS):")
+        self.end_label.configure(text="Fin (HH:MM:SS):" if get_current_language() == "es" else "End (HH:MM:SS):")
+        self.btn_intro.configure(text="Omitir Intro (-30s)" if get_current_language() == "es" else "Skip Intro (-30s)")
+        self.btn_outro.configure(text="Omitir Outro (-15s)" if get_current_language() == "es" else "Skip Outro (-15s)")
+        self.btn_minute.configure(text="Primer Minuto" if get_current_language() == "es" else "First Minute")
+        self.btn_reset.configure(text="Restablecer" if get_current_language() == "es" else "Reset")
+        
+        # update dynamic labels
+        if self.video_duration <= 0:
+            self.slider_info_label.configure(text="⚠️ Rango: No disponible  |  Total: No disponible" if get_current_language() == "es" else "⚠️ Range: Not available  |  Total: Not available")
+            self.warning_label.configure(text="💡 Introduce una URL válida para activar el recorte" if get_current_language() == "es" else "💡 Enter a valid URL to activate trimming")
+        else:
+            self._update_slider_label(int(self.slider.start_sec), int(self.slider.end_sec))
+            self.warning_label.configure(text="💡 Deja vacío para descargar completo" if get_current_language() == "es" else "💡 Leave empty to download full video")
 
     def _preset_intro(self):
         self.start_entry.delete(0, "end")
@@ -1223,13 +1307,22 @@ class TrimmingFrame(ctk.CTkFrame):
         
         if self.video_duration <= 0:
             if start_val or end_val:
-                self.warning_label.configure(text="⚠️ No se puede recortar: Duración del video desconocida", text_color=Colors.ERROR)
+                self.warning_label.configure(
+                    text="⚠️ No se puede recortar: Duración del video desconocida" if get_current_language() == "es" else "⚠️ Cannot trim: Unknown video duration",
+                    text_color=Colors.ERROR
+                )
                 return False
-            self.warning_label.configure(text="💡 Introduce una URL válida para activar el recorte", text_color=Colors.TEXT_MUTED)
+            self.warning_label.configure(
+                text="💡 Introduce una URL válida para activar el recorte" if get_current_language() == "es" else "💡 Enter a valid URL to activate trimming",
+                text_color=Colors.TEXT_MUTED
+            )
             return True
             
         if not start_val and not end_val:
-            self.warning_label.configure(text="💡 Deja vacío para descargar completo", text_color=Colors.TEXT_MUTED)
+            self.warning_label.configure(
+                text="💡 Deja vacío para descargar completo" if get_current_language() == "es" else "💡 Leave empty to download full video",
+                text_color=Colors.TEXT_MUTED
+            )
             if not self._updating_from_slider:
                 self.slider.set_values(0, self.video_duration)
                 self._update_slider_label(0, self.video_duration)
@@ -1241,26 +1334,40 @@ class TrimmingFrame(ctk.CTkFrame):
             end_sec = self.video_duration
 
         if (start_val and start_sec is None) or (end_val and end_sec is None):
-            self.warning_label.configure(text="⚠️ Formato incorrecto. Usa HH:MM:SS o MM:SS", text_color=Colors.ERROR)
+            self.warning_label.configure(
+                text="⚠️ Formato incorrecto. Usa HH:MM:SS o MM:SS" if get_current_language() == "es" else "⚠️ Incorrect format. Use HH:MM:SS or MM:SS",
+                text_color=Colors.ERROR
+            )
             return False
             
         if start_sec < 0 or end_sec < 0:
-            self.warning_label.configure(text="⚠️ Los tiempos no pueden ser negativos", text_color=Colors.ERROR)
+            self.warning_label.configure(
+                text="⚠️ Los tiempos no pueden ser negativos" if get_current_language() == "es" else "⚠️ Times cannot be negative",
+                text_color=Colors.ERROR
+            )
             return False
 
         if start_sec >= end_sec:
-            self.warning_label.configure(text="⚠️ El tiempo de inicio debe ser menor al de fin", text_color=Colors.ERROR)
+            self.warning_label.configure(
+                text="⚠️ El tiempo de inicio debe ser menor al de fin" if get_current_language() == "es" else "⚠️ Start time must be less than end time",
+                text_color=Colors.ERROR
+            )
             return False
 
         if self.video_duration > 0:
             if start_sec > self.video_duration:
-                self.warning_label.configure(text=f"⚠️ El inicio excede la duración del video ({start_val} > {self.video_duration}s)", text_color=Colors.ERROR)
+                msg = f"⚠️ El inicio excede la duración del video ({start_val} > {self.video_duration}s)" if get_current_language() == "es" else f"⚠️ Start exceeds video duration ({start_val} > {self.video_duration}s)"
+                self.warning_label.configure(text=msg, text_color=Colors.ERROR)
                 return False
             if end_sec > self.video_duration:
-                self.warning_label.configure(text=f"⚠️ El fin excede la duración del video ({end_val} > {self.video_duration}s)", text_color=Colors.ERROR)
+                msg = f"⚠️ El fin excede la duración del video ({end_val} > {self.video_duration}s)" if get_current_language() == "es" else f"⚠️ End exceeds video duration ({end_val} > {self.video_duration}s)"
+                self.warning_label.configure(text=msg, text_color=Colors.ERROR)
                 return False
 
-        self.warning_label.configure(text="✅ Tiempos de recorte válidos", text_color=Colors.SUCCESS)
+        self.warning_label.configure(
+            text="✅ Tiempos de recorte válidos" if get_current_language() == "es" else "✅ Valid trim times",
+            text_color=Colors.SUCCESS
+        )
         
         if not self._updating_from_slider:
             self.slider.set_values(start_sec, end_sec)
@@ -1281,7 +1388,7 @@ class HistoryWindow(ctk.CTkToplevel):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.title("Historial de Descargas — MXP")
+        self.title(_("hist_window_title") + " — MXP")
         self.geometry("600x480")
         self.configure(fg_color=Colors.BG_DARK)
         self.attributes("-topmost", True)
@@ -1302,7 +1409,7 @@ class HistoryWindow(ctk.CTkToplevel):
         # Título
         ctk.CTkLabel(
             header_frame, 
-            text="📜 Historial de Descargas", 
+            text="📜 " + _("hist_window_title"), 
             font=(Fonts.FAMILY, Fonts.SIZE_TITLE, "bold"),
             text_color=Colors.ACCENT_YELLOW
         ).pack(side="left")
@@ -1310,7 +1417,7 @@ class HistoryWindow(ctk.CTkToplevel):
         # Botón de limpiar historial
         self.clear_btn = ctk.CTkButton(
             header_frame,
-            text="🧹 Limpiar Historial",
+            text="🧹 " + _("btn_hist_clear"),
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"),
             fg_color=Colors.ERROR,
             hover_color="#c0392b",
@@ -1348,7 +1455,7 @@ class HistoryWindow(ctk.CTkToplevel):
         history = HistoryManager().get_all()
 
         if not history:
-            ctk.CTkLabel(self.scroll, text="No hay descargas registradas.", font=(Fonts.FAMILY, Fonts.SIZE_BODY), text_color=Colors.TEXT_MUTED).pack(pady=Spacing.XL)
+            ctk.CTkLabel(self.scroll, text=_("hist_empty"), font=(Fonts.FAMILY, Fonts.SIZE_BODY), text_color=Colors.TEXT_MUTED).pack(pady=Spacing.XL)
             return
 
         for entry in history:
@@ -1419,12 +1526,16 @@ class FooterFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
 
-        ctk.CTkLabel(
+        self.label = ctk.CTkLabel(
             self,
-            text="Powered by yt-dlp  ·  Local & Free  ·  v1.0",
+            text=f"Powered by yt-dlp  ·  {'Local & Free' if get_current_language() == 'en' else 'Local y Gratis'}  ·  v1.0",
             font=(Fonts.FAMILY, Fonts.SIZE_TINY),
             text_color=Colors.TEXT_MUTED,
-        ).pack(pady=Spacing.SM)
+        )
+        self.label.pack(pady=Spacing.SM)
+
+    def update_ui_text(self):
+        self.label.configure(text=f"Powered by yt-dlp  ·  {'Local & Free' if get_current_language() == 'en' else 'Local y Gratis'}  ·  v1.0")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1577,6 +1688,9 @@ class ThumbnailPreviewFrame(ctk.CTkFrame):
             print(f"[DEBUG] Error al descargar miniatura de URL {url}: {e}")
             self.after(0, lambda: self.image_label.configure(text="🎬 Error al cargar miniatura", image=None))
 
+    def update_ui_text(self):
+        pass
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  CONVERTER PANEL
@@ -1607,21 +1721,23 @@ class ConverterPanelFrame(ctk.CTkFrame):
         header_content = ctk.CTkFrame(self.header, fg_color="transparent")
         header_content.pack(fill="x", padx=Spacing.LG, pady=Spacing.LG)
         
-        ctk.CTkLabel(
+        self.header_title = ctk.CTkLabel(
             header_content,
             text="MXP Converter",
             font=(Fonts.FAMILY, Fonts.SIZE_TITLE, "bold"),
             text_color=Colors.ACCENT_YELLOW,
             anchor="w"
-        ).pack(fill="x")
+        )
+        self.header_title.pack(fill="x")
         
-        ctk.CTkLabel(
+        self.header_subtitle = ctk.CTkLabel(
             header_content,
-            text="Conversor local de video, audio e imágenes",
+            text="Conversor local de video, audio e imágenes" if get_current_language() == "es" else "Local converter for video, audio and images",
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
             text_color=Colors.TEXT_SECONDARY,
             anchor="w"
-        ).pack(fill="x", pady=(Spacing.XS, 0))
+        )
+        self.header_subtitle.pack(fill="x", pady=(Spacing.XS, 0))
 
         # ── 2. Contenedor de Opciones ──
         options_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -1636,11 +1752,18 @@ class ConverterPanelFrame(ctk.CTkFrame):
         left_content = ctk.CTkFrame(left_col, fg_color="transparent")
         left_content.pack(fill="both", expand=True, padx=Spacing.LG, pady=Spacing.LG)
         
-        ctk.CTkLabel(left_content, text="📁 Selección de Archivos", font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w").pack(fill="x")
+        self.left_title = ctk.CTkLabel(
+            left_content, 
+            text="📁 Selección de Archivos" if get_current_language() == "es" else "📁 File Selection", 
+            font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"), 
+            text_color=Colors.TEXT_PRIMARY, 
+            anchor="w"
+        )
+        self.left_title.pack(fill="x")
         
         self.btn_select = ctk.CTkButton(
             left_content,
-            text="Buscar Archivos",
+            text=_("btn_conv_browse"),
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"),
             fg_color=Colors.BG_TERTIARY,
             hover_color=Colors.BG_HOVER,
@@ -1681,15 +1804,22 @@ class ConverterPanelFrame(ctk.CTkFrame):
         right_content = ctk.CTkFrame(right_col, fg_color="transparent")
         right_content.pack(fill="both", expand=True, padx=Spacing.LG, pady=Spacing.LG)
         
-        ctk.CTkLabel(right_content, text="⚙️ Configuración", font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w").pack(fill="x")
+        self.right_title = ctk.CTkLabel(right_content, text="⚙️ Configuración" if get_current_language() == "es" else "⚙️ Settings", font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w")
+        self.right_title.pack(fill="x")
         
         # Categoría
-        ctk.CTkLabel(right_content, text="Categoría:", font=(Fonts.FAMILY, Fonts.SIZE_TINY, "bold"), text_color=Colors.TEXT_MUTED, anchor="w").pack(fill="x", pady=(Spacing.MD, 0))
-        self.category_var = tk.StringVar(value="Video")
+        self.category_label = ctk.CTkLabel(right_content, text=_("conv_cat_label"), font=(Fonts.FAMILY, Fonts.SIZE_TINY, "bold"), text_color=Colors.TEXT_MUTED, anchor="w")
+        self.category_label.pack(fill="x", pady=(Spacing.MD, 0))
+        
+        cat_video_str = "Video"
+        cat_audio_str = "Audio"
+        cat_img_str = "Imagen" if get_current_language() == "es" else "Image"
+        
+        self.category_var = tk.StringVar(value=cat_video_str)
         self.category_menu = ctk.CTkOptionMenu(
             right_content,
             variable=self.category_var,
-            values=["Video", "Audio", "Imagen"],
+            values=[cat_video_str, cat_audio_str, cat_img_str],
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
             fg_color=Colors.BG_TERTIARY,
             button_color=Colors.BG_TERTIARY,
@@ -1705,7 +1835,7 @@ class ConverterPanelFrame(ctk.CTkFrame):
         self.category_menu.pack(fill="x", pady=(Spacing.XS, 0))
         
         # Formato / Acción Destino
-        self.format_label = ctk.CTkLabel(right_content, text="Formato Destino:", font=(Fonts.FAMILY, Fonts.SIZE_TINY, "bold"), text_color=Colors.TEXT_MUTED, anchor="w")
+        self.format_label = ctk.CTkLabel(right_content, text=_("conv_fmt_label"), font=(Fonts.FAMILY, Fonts.SIZE_TINY, "bold"), text_color=Colors.TEXT_MUTED, anchor="w")
         self.format_label.pack(fill="x", pady=(Spacing.MD, 0))
         
         self.format_var = tk.StringVar()
@@ -1726,12 +1856,12 @@ class ConverterPanelFrame(ctk.CTkFrame):
         )
         self.format_menu.pack(fill="x", pady=(Spacing.XS, 0))
 
-        self._update_format_menu("Video")
+        self._update_format_menu(cat_video_str)
 
         # Ayuda contextual
         self.hint_label = ctk.CTkLabel(
             right_content,
-            text="💡 Puedes seleccionar videos (MP4/MKV) en la categoría 'Audio' para extraer su sonido a MP3/WAV.",
+            text="💡 Puedes seleccionar videos (MP4/MKV) en la categoría 'Audio' para extraer su sonido a MP3/WAV." if get_current_language() == "es" else "💡 You can select videos (MP4/MKV) in the 'Audio' category to extract their sound to MP3/WAV.",
             font=(Fonts.FAMILY, Fonts.SIZE_TINY),
             text_color=Colors.TEXT_MUTED,
             wraplength=220,
@@ -1746,7 +1876,8 @@ class ConverterPanelFrame(ctk.CTkFrame):
         dest_content = ctk.CTkFrame(dest_card, fg_color="transparent")
         dest_content.pack(fill="x", padx=Spacing.LG, pady=Spacing.LG)
         
-        ctk.CTkLabel(dest_content, text="📁 Guardar en:", font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"), text_color=Colors.TEXT_PRIMARY).pack(side="left")
+        self.dest_label = ctk.CTkLabel(dest_content, text="📁 Guardar en:" if get_current_language() == "es" else "📁 Save to:", font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"), text_color=Colors.TEXT_PRIMARY)
+        self.dest_label.pack(side="left")
         
         self.dest_entry = ctk.CTkEntry(
             dest_content,
@@ -1764,7 +1895,7 @@ class ConverterPanelFrame(ctk.CTkFrame):
         
         self.btn_dest = ctk.CTkButton(
             dest_content,
-            text="Cambiar",
+            text=_("btn_browse").replace("🔎 Buscar...", "Cambiar").replace("Browse...", "Browse"),
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"),
             fg_color=Colors.BG_TERTIARY,
             hover_color=Colors.BG_HOVER,
@@ -1779,7 +1910,7 @@ class ConverterPanelFrame(ctk.CTkFrame):
         # ── 4. Botón Ejecutar y Barra de Progreso ──
         self.btn_convert = ctk.CTkButton(
             self,
-            text="Iniciar Conversión 🔄",
+            text=_("btn_conv_start") + " 🔄",
             font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"),
             fg_color=Colors.ACCENT_PRIMARY,
             hover_color=Colors.BUTTON_HOVER,
@@ -1807,7 +1938,8 @@ class ConverterPanelFrame(ctk.CTkFrame):
         log_content = ctk.CTkFrame(log_card, fg_color="transparent")
         log_content.pack(fill="both", expand=True, padx=Spacing.LG, pady=Spacing.LG)
         
-        ctk.CTkLabel(log_content, text="📋 Registro de Actividad", font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w").pack(fill="x")
+        self.log_title = ctk.CTkLabel(log_content, text="📋 Registro de Actividad" if get_current_language() == "es" else "📋 Activity Log", font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w")
+        self.log_title.pack(fill="x")
         
         self.log_console = ctk.CTkTextbox(
             log_content,
@@ -1820,7 +1952,7 @@ class ConverterPanelFrame(ctk.CTkFrame):
             height=160
         )
         self.log_console.pack(fill="both", expand=True, pady=(Spacing.SM, 0))
-        self.log_console.insert("1.0", "Listo para convertir archivos.\n")
+        self.log_console.insert("1.0", "Listo para convertir archivos.\n" if get_current_language() == "es" else "Ready to convert files.\n")
         self.log_console.configure(state="disabled")
         
         self._update_files_list_ui()
@@ -1833,7 +1965,7 @@ class ConverterPanelFrame(ctk.CTkFrame):
         if not self.selected_files:
             lbl = ctk.CTkLabel(
                 self.files_list,
-                text="⬇  Arrastra archivos aquí, o usa 'Buscar Archivos'",
+                text="⬇  Arrastra archivos aquí, o usa 'Buscar Archivos'" if get_current_language() == "es" else "⬇  Drag files here, or click 'Browse Files'",
                 font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
                 text_color=Colors.TEXT_MUTED,
                 anchor="w"
@@ -1877,7 +2009,7 @@ class ConverterPanelFrame(ctk.CTkFrame):
         if path in self.selected_files:
             self.selected_files.remove(path)
             self._update_files_list_ui()
-            self._log(f"Quitado de la cola: {os.path.basename(path)}\n")
+            self._log(f"Quitado de la cola: {os.path.basename(path)}\n" if get_current_language() == "es" else f"Removed from queue: {os.path.basename(path)}\n")
 
     def _on_file_drop(self, event):
         """Manejador nativo de Drag & Drop para arrastrar archivos a la app."""
@@ -1902,11 +2034,78 @@ class ConverterPanelFrame(ctk.CTkFrame):
             self.category_var.set(detected)
             self._update_format_menu(detected)
             self._update_files_list_ui()
-            self._log(f"📥 Archivos cargados por arrastre: {len(valid_paths)} nuevos archivos agregados.\n")
+            self._log(f"📥 Archivos cargados por arrastre: {len(valid_paths)} nuevos archivos agregados.\n" if get_current_language() == "es" else f"📥 Files loaded by drag & drop: {len(valid_paths)} new files added.\n")
+
+    def _get_category_key(self) -> str:
+        val = self.category_var.get()
+        if val in ("Video",):
+            return "Video"
+        elif val in ("Audio",):
+            return "Audio"
+        elif val in ("Imagen", "Image"):
+            return "Imagen"
+        return "Video"
+
+    def update_ui_text(self):
+        self.header_subtitle.configure(text="Conversor local de video, audio e imágenes" if get_current_language() == "es" else "Local converter for video, audio and images")
+        self.left_title.configure(text="📁 Selección de Archivos" if get_current_language() == "es" else "📁 File Selection")
+        self.btn_select.configure(text=_("btn_conv_browse"))
+        self.right_title.configure(text="⚙️ Configuración" if get_current_language() == "es" else "⚙️ Settings")
+        self.category_label.configure(text=_("conv_cat_label"))
+        
+        # update category menu values
+        cat_video_str = "Video"
+        cat_audio_str = "Audio"
+        cat_img_str = "Imagen" if get_current_language() == "es" else "Image"
+        current_cat = self.category_var.get()
+        if current_cat in ("Imagen", "Image"):
+            self.category_var.set(cat_img_str)
+        self.category_menu.configure(values=[cat_video_str, cat_audio_str, cat_img_str])
+        
+        self.format_label.configure(text=_("conv_fmt_label"))
+        self.hint_label.configure(text="💡 Puedes seleccionar videos (MP4/MKV) en la categoría 'Audio' para extraer su sonido a MP3/WAV." if get_current_language() == "es" else "💡 You can select videos (MP4/MKV) in the 'Audio' category to extract their sound to MP3/WAV.")
+        self.dest_label.configure(text="📁 Guardar en:" if get_current_language() == "es" else "📁 Save to:")
+        self.btn_dest.configure(text=_("btn_browse").replace("🔎 Buscar...", "Cambiar").replace("Browse...", "Browse"))
+        self.btn_convert.configure(text=_("btn_conv_start") + " 🔄")
+        self.log_title.configure(text="📋 Registro de Actividad" if get_current_language() == "es" else "📋 Activity Log")
+        self._update_files_list_ui()
+
+        # Traducir el historial de la consola
+        try:
+            content = self.log_console.get("1.0", "end-1c")
+            is_es = get_current_language() == "es"
+            
+            replacements = [
+                ("Listo para convertir archivos.", "Ready to convert files."),
+                ("Archivos cargados:", "Files loaded:"),
+                ("nuevos archivos agregados para", "new files added for"),
+                ("📥 Archivos cargados por arrastre:", "📥 Files loaded by drag & drop:"),
+                ("nuevos archivos agregados.", "new files added."),
+                ("Quitado de la cola:", "Removed from queue:"),
+                ("Carpeta de salida cambiada a:", "Output folder changed to:"),
+                ("--- Iniciando Proceso:", "--- Starting Process:"),
+                ("--- Proceso Finalizado:", "--- Process Finished:"),
+                ("completados.", "completed."),
+                ("de", "of"),
+                ("[❌ Error] Archivo no existe:", "[❌ Error] File does not exist:"),
+            ]
+            
+            for es, en in replacements:
+                if is_es:
+                    content = content.replace(en, es)
+                else:
+                    content = content.replace(es, en)
+                    
+            self.log_console.configure(state="normal")
+            self.log_console.delete("1.0", "end")
+            self.log_console.insert("1.0", content)
+            self.log_console.configure(state="disabled")
+        except Exception:
+            pass
 
     def _select_files(self):
         """Abre buscador de archivos locales aplicando filtro selectivo según la categoría."""
-        category = self.category_var.get()
+        category = self._get_category_key()
         if category == "Video":
             filetypes = [
                 ("Archivos de Video", "*.mp4;*.mkv;*.avi;*.mov;*.webm"),
@@ -1931,7 +2130,7 @@ class ConverterPanelFrame(ctk.CTkFrame):
                 if p not in self.selected_files:
                     self.selected_files.append(p)
             self._update_files_list_ui()
-            self._log(f"Archivos cargados: {len(paths)} nuevos archivos agregados para {category}.\n")
+            self._log(f"Archivos cargados: {len(paths)} nuevos archivos agregados para {category}.\n" if get_current_language() == "es" else f"Files loaded: {len(paths)} new files added for {category}.\n")
 
     def _select_dest(self):
         """Selecciona carpeta de destino."""
@@ -1942,21 +2141,24 @@ class ConverterPanelFrame(ctk.CTkFrame):
             self.dest_entry.delete(0, "end")
             self.dest_entry.insert(0, self.output_dir)
             self.dest_entry.configure(state="readonly")
-            self._log(f"Carpeta de salida cambiada a: {self.output_dir}\n")
+            self._log(f"Carpeta de salida cambiada a: {self.output_dir}\n" if get_current_language() == "es" else f"Output folder changed to: {self.output_dir}\n")
 
     def _on_category_change(self, val):
-        self._update_format_menu(val)
+        self._update_format_menu(self._get_category_key())
 
     def _update_format_menu(self, category):
+        if category in ("Imagen", "Image"):
+            category = "Imagen"
+            
         self.format_menu.configure(state="normal")
         if category == "Video":
-            self.format_label.configure(text="Formato Destino:")
+            self.format_label.configure(text=_("conv_fmt_label"))
             formats = ["MP4", "MKV", "MOV", "AVI", "WEBM"]
         elif category == "Audio":
-            self.format_label.configure(text="Formato Destino:")
+            self.format_label.configure(text=_("conv_fmt_label"))
             formats = ["MP3", "WAV", "FLAC", "M4A"]
         elif category == "Imagen":
-            self.format_label.configure(text="Formato Destino:")
+            self.format_label.configure(text=_("conv_fmt_label"))
             formats = ["JPG", "PNG", "WEBP", "BMP"]
         self.format_menu.configure(values=formats)
         self.format_var.set(formats[0])
@@ -1986,18 +2188,18 @@ class ConverterPanelFrame(ctk.CTkFrame):
         threading.Thread(target=self._run_conversion, daemon=True).start()
 
     def _run_conversion(self):
-        category = self.category_var.get()
+        category = self._get_category_key()
         target = self.format_var.get()
         
         total = len(self.selected_files)
-        self._log(f"\n--- Iniciando Proceso: {category} -> {target} ---\n")
+        self._log(f"\n--- Iniciando Proceso: {category} -> {target} ---\n" if get_current_language() == "es" else f"\n--- Starting Process: {category} -> {target} ---\n")
         
         success_count = 0
         base_text = "Iniciando..."
         
-        for i, file_path in enumerate(self.selected_files):
+        for i, file_path in enumerate(list(self.selected_files)):
             if not os.path.exists(file_path):
-                self._log(f"[✗ Error] Archivo no existe: {file_path}\n")
+                self._log(f"[❌ Error] Archivo no existe: {file_path}\n" if get_current_language() == "es" else f"[❌ Error] File does not exist: {file_path}\n")
                 continue
                 
             res = None
@@ -2030,11 +2232,14 @@ class ConverterPanelFrame(ctk.CTkFrame):
                     
             if res:
                 success_count += 1
+                if file_path in self.selected_files:
+                    self.selected_files.remove(file_path)
+                    self.after(0, self._update_files_list_ui)
             
             # Marcar archivo completo
             self.after(0, lambda p=(i+1)/total: self.progress_bar.set(p))
             
-        self._log(f"\n--- Proceso Finalizado: {success_count} de {total} completados. ---\n")
+        self._log(f"\n--- Proceso Finalizado: {success_count} de {total} completados. ---\n" if get_current_language() == "es" else f"\n--- Process Finished: {success_count} of {total} completed. ---\n")
         
         from core.utils import show_windows_notification
         if success_count == total:
@@ -2082,21 +2287,23 @@ class CompressorPanelFrame(ctk.CTkFrame):
         header_content = ctk.CTkFrame(self.header, fg_color="transparent")
         header_content.pack(fill="x", padx=Spacing.LG, pady=Spacing.LG)
         
-        ctk.CTkLabel(
+        self.header_title = ctk.CTkLabel(
             header_content,
             text="MXP Compressor",
             font=(Fonts.FAMILY, Fonts.SIZE_TITLE, "bold"),
             text_color=Colors.ACCENT_YELLOW,
             anchor="w"
-        ).pack(fill="x")
+        )
+        self.header_title.pack(fill="x")
         
-        ctk.CTkLabel(
+        self.header_subtitle = ctk.CTkLabel(
             header_content,
-            text="Optimiza y reduce el peso de tus archivos multimedia de forma local",
+            text="Optimiza y reduce el peso de tus archivos multimedia de forma local" if get_current_language() == "es" else "Optimize and reduce the size of your media files locally",
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
             text_color=Colors.TEXT_SECONDARY,
             anchor="w"
-        ).pack(fill="x", pady=(Spacing.XS, 0))
+        )
+        self.header_subtitle.pack(fill="x", pady=(Spacing.XS, 0))
 
         # ── 2. Contenedor de Opciones ──
         options_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -2111,11 +2318,18 @@ class CompressorPanelFrame(ctk.CTkFrame):
         left_content = ctk.CTkFrame(left_col, fg_color="transparent")
         left_content.pack(fill="both", expand=True, padx=Spacing.LG, pady=Spacing.LG)
         
-        ctk.CTkLabel(left_content, text="📁 Selección de Archivos", font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w").pack(fill="x")
+        self.left_title = ctk.CTkLabel(
+            left_content, 
+            text="📁 Selección de Archivos" if get_current_language() == "es" else "📁 File Selection", 
+            font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"), 
+            text_color=Colors.TEXT_PRIMARY, 
+            anchor="w"
+        )
+        self.left_title.pack(fill="x")
         
         self.btn_select = ctk.CTkButton(
             left_content,
-            text="Buscar Archivos",
+            text=_("btn_conv_browse"),
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"),
             fg_color=Colors.BG_TERTIARY,
             hover_color=Colors.BG_HOVER,
@@ -2156,15 +2370,22 @@ class CompressorPanelFrame(ctk.CTkFrame):
         right_content = ctk.CTkFrame(right_col, fg_color="transparent")
         right_content.pack(fill="both", expand=True, padx=Spacing.LG, pady=Spacing.LG)
         
-        ctk.CTkLabel(right_content, text="⚙️ Configuración", font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w").pack(fill="x")
+        self.right_title = ctk.CTkLabel(right_content, text="⚙️ Configuración" if get_current_language() == "es" else "⚙️ Settings", font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w")
+        self.right_title.pack(fill="x")
         
         # Categoría
-        ctk.CTkLabel(right_content, text="Categoría:", font=(Fonts.FAMILY, Fonts.SIZE_TINY, "bold"), text_color=Colors.TEXT_MUTED, anchor="w").pack(fill="x", pady=(Spacing.MD, 0))
-        self.category_var = tk.StringVar(value="Video")
+        self.category_label = ctk.CTkLabel(right_content, text=_("conv_cat_label"), font=(Fonts.FAMILY, Fonts.SIZE_TINY, "bold"), text_color=Colors.TEXT_MUTED, anchor="w")
+        self.category_label.pack(fill="x", pady=(Spacing.MD, 0))
+        
+        cat_video_str = "Video"
+        cat_audio_str = "Audio"
+        cat_img_str = "Imagen" if get_current_language() == "es" else "Image"
+        
+        self.category_var = tk.StringVar(value=cat_video_str)
         self.category_menu = ctk.CTkOptionMenu(
             right_content,
             variable=self.category_var,
-            values=["Video", "Audio", "Imagen"],
+            values=[cat_video_str, cat_audio_str, cat_img_str],
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
             fg_color=Colors.BG_TERTIARY,
             button_color=Colors.BG_TERTIARY,
@@ -2180,7 +2401,7 @@ class CompressorPanelFrame(ctk.CTkFrame):
         self.category_menu.pack(fill="x", pady=(Spacing.XS, 0))
         
         # Nivel de Compresión
-        self.level_label = ctk.CTkLabel(right_content, text="Nivel de Compresión:", font=(Fonts.FAMILY, Fonts.SIZE_TINY, "bold"), text_color=Colors.TEXT_MUTED, anchor="w")
+        self.level_label = ctk.CTkLabel(right_content, text=_("comp_level_label") + ":", font=(Fonts.FAMILY, Fonts.SIZE_TINY, "bold"), text_color=Colors.TEXT_MUTED, anchor="w")
         self.level_label.pack(fill="x", pady=(Spacing.MD, 0))
         
         self.level_var = tk.StringVar()
@@ -2220,7 +2441,8 @@ class CompressorPanelFrame(ctk.CTkFrame):
         dest_content = ctk.CTkFrame(dest_card, fg_color="transparent")
         dest_content.pack(fill="x", padx=Spacing.LG, pady=Spacing.LG)
         
-        ctk.CTkLabel(dest_content, text="📁 Guardar en:", font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"), text_color=Colors.TEXT_PRIMARY).pack(side="left")
+        self.dest_label = ctk.CTkLabel(dest_content, text="📁 Guardar en:" if get_current_language() == "es" else "📁 Save to:", font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"), text_color=Colors.TEXT_PRIMARY)
+        self.dest_label.pack(side="left")
         
         self.dest_entry = ctk.CTkEntry(
             dest_content,
@@ -2238,7 +2460,7 @@ class CompressorPanelFrame(ctk.CTkFrame):
         
         self.btn_dest = ctk.CTkButton(
             dest_content,
-            text="Cambiar",
+            text=_("btn_browse").replace("🔎 Buscar...", "Cambiar").replace("Browse...", "Browse"),
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"),
             fg_color=Colors.BG_TERTIARY,
             hover_color=Colors.BG_HOVER,
@@ -2254,7 +2476,7 @@ class CompressorPanelFrame(ctk.CTkFrame):
         # Disclaimer de uso de CPU
         self.disclaimer_lbl = ctk.CTkLabel(
             self,
-            text="⚠️ Nota: La compresión de video es una tarea intensiva. El proceso se ejecuta en prioridad baja para que tu PC no se ralentice.",
+            text="⚠️ Nota: La compresión de video es una tarea intensiva. El proceso se ejecuta en prioridad baja para que tu PC no se ralentice." if get_current_language() == "es" else "⚠️ Note: Video compression is CPU intensive. The process runs in low priority to prevent slowing down your PC.",
             font=(Fonts.FAMILY, Fonts.SIZE_TINY),
             text_color=Colors.TEXT_MUTED,
             anchor="center"
@@ -2263,7 +2485,7 @@ class CompressorPanelFrame(ctk.CTkFrame):
 
         self.btn_compress = ctk.CTkButton(
             self,
-            text="Iniciar Compresión 🗜",
+            text=_("btn_comp_start") + " 🗜",
             font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"),
             fg_color=Colors.ACCENT_PRIMARY,
             hover_color=Colors.BUTTON_HOVER,
@@ -2291,7 +2513,8 @@ class CompressorPanelFrame(ctk.CTkFrame):
         log_content = ctk.CTkFrame(log_card, fg_color="transparent")
         log_content.pack(fill="both", expand=True, padx=Spacing.LG, pady=Spacing.LG)
         
-        ctk.CTkLabel(log_content, text="📋 Registro de Actividad", font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w").pack(fill="x")
+        self.log_title = ctk.CTkLabel(log_content, text="📋 Registro de Actividad" if get_current_language() == "es" else "📋 Activity Log", font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w")
+        self.log_title.pack(fill="x")
         
         self.log_console = ctk.CTkTextbox(
             log_content,
@@ -2304,7 +2527,7 @@ class CompressorPanelFrame(ctk.CTkFrame):
             height=160
         )
         self.log_console.pack(fill="both", expand=True, pady=(Spacing.SM, 0))
-        self.log_console.insert("1.0", "Listo para optimizar y comprimir archivos.\n")
+        self.log_console.insert("1.0", "Listo para optimizar y comprimir archivos.\n" if get_current_language() == "es" else "Ready to optimize and compress files.\n")
         self.log_console.configure(state="disabled")
         
         self._update_files_list_ui()
@@ -2317,7 +2540,7 @@ class CompressorPanelFrame(ctk.CTkFrame):
         if not self.selected_files:
             lbl = ctk.CTkLabel(
                 self.files_list,
-                text="⬇  Arrastra archivos aquí, o usa 'Buscar Archivos'",
+                text="⬇  Arrastra archivos aquí, o usa 'Buscar Archivos'" if get_current_language() == "es" else "⬇  Drag files here, or click 'Browse Files'",
                 font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
                 text_color=Colors.TEXT_MUTED,
                 anchor="w"
@@ -2361,7 +2584,7 @@ class CompressorPanelFrame(ctk.CTkFrame):
         if path in self.selected_files:
             self.selected_files.remove(path)
             self._update_files_list_ui()
-            self._log(f"Quitado de la cola: {os.path.basename(path)}\n")
+            self._log(f"Quitado de la cola: {os.path.basename(path)}\n" if get_current_language() == "es" else f"Removed from queue: {os.path.basename(path)}\n")
 
     def _on_file_drop(self, event):
         import re
@@ -2384,10 +2607,82 @@ class CompressorPanelFrame(ctk.CTkFrame):
             self.category_var.set(detected)
             self._update_level_menu(detected)
             self._update_files_list_ui()
-            self._log(f"📥 Archivos cargados por arrastre: {len(valid_paths)} nuevos archivos agregados.\n")
+            self._log(f"📥 Archivos cargados por arrastre: {len(valid_paths)} nuevos archivos agregados.\n" if get_current_language() == "es" else f"📥 Files loaded by drag & drop: {len(valid_paths)} new files added.\n")
+
+    def _get_category_key(self) -> str:
+        val = self.category_var.get()
+        if val in ("Video",):
+            return "Video"
+        elif val in ("Audio",):
+            return "Audio"
+        elif val in ("Imagen", "Image"):
+            return "Imagen"
+        return "Video"
+
+    def update_ui_text(self):
+        self.header_subtitle.configure(
+            text="Optimiza y reduce el peso de tus archivos multimedia de forma local" if get_current_language() == "es" else "Optimize and reduce the size of your media files locally"
+        )
+        self.left_title.configure(text="📁 Selección de Archivos" if get_current_language() == "es" else "📁 File Selection")
+        self.btn_select.configure(text=_("btn_conv_browse"))
+        self.right_title.configure(text="⚙️ Configuración" if get_current_language() == "es" else "⚙️ Settings")
+        self.category_label.configure(text=_("conv_cat_label"))
+        
+        # update category menu values
+        cat_video_str = "Video"
+        cat_audio_str = "Audio"
+        cat_img_str = "Imagen" if get_current_language() == "es" else "Image"
+        current_cat = self.category_var.get()
+        if current_cat in ("Imagen", "Image"):
+            self.category_var.set(cat_img_str)
+        self.category_menu.configure(values=[cat_video_str, cat_audio_str, cat_img_str])
+        
+        self.level_label.configure(text=_("comp_level_label") + ":")
+        self.dest_label.configure(text="📁 Guardar en:" if get_current_language() == "es" else "📁 Save to:")
+        self.btn_dest.configure(text=_("btn_browse").replace("🔎 Buscar...", "Cambiar").replace("Browse...", "Browse"))
+        self.disclaimer_lbl.configure(text="⚠️ Nota: La compresión de video es una tarea intensiva. El proceso se ejecuta en prioridad baja para que tu PC no se ralentice." if get_current_language() == "es" else "⚠️ Note: Video compression is CPU intensive. The process runs in low priority to prevent slowing down your PC.")
+        self.btn_compress.configure(text=_("btn_comp_start") + " 🗜")
+        self.log_title.configure(text="📋 Registro de Actividad" if get_current_language() == "es" else "📋 Activity Log")
+        self._update_level_menu(self._get_category_key())
+        self._update_files_list_ui()
+
+        # Traducir el historial de la consola
+        try:
+            content = self.log_console.get("1.0", "end-1c")
+            is_es = get_current_language() == "es"
+            
+            replacements = [
+                ("Listo para optimizar y comprimir archivos.", "Ready to optimize and compress files."),
+                ("Archivos cargados:", "Files loaded:"),
+                ("nuevos archivos agregados para compresión de", "new files added for compression of"),
+                ("📥 Archivos cargados por arrastre:", "📥 Files loaded by drag & drop:"),
+                ("nuevos archivos agregados.", "new files added."),
+                ("Quitado de la cola:", "Removed from queue:"),
+                ("Carpeta de salida cambiada a:", "Output folder changed to:"),
+                ("--- Iniciando Compresión:", "--- Starting Compression:"),
+                ("(Nivel:", "(Level:"),
+                ("--- Compresión Finalizada:", "--- Compression Finished:"),
+                ("procesados.", "processed."),
+                ("de", "of"),
+                ("Falló la compresión. Revisa el Registro de Actividad.", "Compression failed. Check Activity Log."),
+                ("[❌ Error] Archivo no existe:", "[❌ Error] File does not exist:"),
+            ]
+            
+            for es, en in replacements:
+                if is_es:
+                    content = content.replace(en, es)
+                else:
+                    content = content.replace(es, en)
+                    
+            self.log_console.configure(state="normal")
+            self.log_console.delete("1.0", "end")
+            self.log_console.insert("1.0", content)
+            self.log_console.configure(state="disabled")
+        except Exception:
+            pass
 
     def _select_files(self):
-        category = self.category_var.get()
+        category = self._get_category_key()
         if category == "Video":
             filetypes = [
                 ("Archivos de Video", "*.mp4;*.mkv;*.avi;*.mov;*.webm"),
@@ -2412,7 +2707,7 @@ class CompressorPanelFrame(ctk.CTkFrame):
                 if p not in self.selected_files:
                     self.selected_files.append(p)
             self._update_files_list_ui()
-            self._log(f"Archivos cargados: {len(paths)} nuevos archivos agregados para compresión de {category}.\n")
+            self._log(f"Archivos cargados: {len(paths)} nuevos archivos agregados para compresión de {category}.\n" if get_current_language() == "es" else f"Files loaded: {len(paths)} new files added for compression of {category}.\n")
 
     def _select_dest(self):
         path = filedialog.askdirectory(title="Seleccionar Carpeta de Destino")
@@ -2422,25 +2717,37 @@ class CompressorPanelFrame(ctk.CTkFrame):
             self.dest_entry.delete(0, "end")
             self.dest_entry.insert(0, self.output_dir)
             self.dest_entry.configure(state="readonly")
-            self._log(f"Carpeta de salida cambiada a: {self.output_dir}\n")
+            self._log(f"Carpeta de salida cambiada a: {self.output_dir}\n" if get_current_language() == "es" else f"Output folder changed to: {self.output_dir}\n")
 
     def _on_category_change(self, val):
-        self._update_level_menu(val)
+        self._update_level_menu(self._get_category_key())
 
     def _update_level_menu(self, category):
         self.level_menu.configure(state="normal")
         if category == "Video":
-            self.level_label.configure(text="Nivel de Compresión:")
-            formats = ["Media (Buen balance)", "Alta (WhatsApp/Discord - Max 16MB)", "Extrema (Correo - Max 8MB)"]
-            self.hint_label.configure(text="💡 El nivel 'Alta' comprime a 720p y el bitrate. 'Extrema' reduce a 480p.")
+            self.level_label.configure(text=_("comp_level_label") + ":")
+            if get_current_language() == "es":
+                formats = ["Media (Buen balance)", "Alta (WhatsApp/Discord - Max 16MB)", "Extrema (Correo - Max 8MB)"]
+                self.hint_label.configure(text="💡 El nivel 'Alta' comprime a 720p y el bitrate. 'Extrema' reduce a 480p.")
+            else:
+                formats = ["Medium (Good balance)", "High (WhatsApp/Discord - Max 16MB)", "Extreme (Email - Max 8MB)"]
+                self.hint_label.configure(text="💡 'High' level compresses to 720p and the bitrate. 'Extreme' reduces to 480p.")
         elif category == "Audio":
             self.level_label.configure(text="Bitrate Objetivo:")
-            formats = ["128 kbps (Ahorro de espacio)", "96 kbps (Móvil básico)", "64 kbps (Baja calidad/Voz)"]
-            self.hint_label.configure(text="💡 Ideal para podcasts, conferencias o grabaciones largas de voz.")
+            if get_current_language() == "es":
+                formats = ["128 kbps (Ahorro de espacio)", "96 kbps (Móvil básico)", "64 kbps (Baja calidad/Voz)"]
+                self.hint_label.configure(text="💡 Ideal para podcasts, conferencias o grabaciones largas de voz.")
+            else:
+                formats = ["128 kbps (Save space)", "96 kbps (Basic mobile)", "64 kbps (Low quality/Voice)"]
+                self.hint_label.configure(text="💡 Ideal for podcasts, conferences or long voice recordings.")
         elif category == "Imagen":
-            self.level_label.configure(text="Nivel de Calidad:")
-            formats = ["Media (Calidad 70%)", "Alta Compresión (Calidad 50%)", "Máxima Compresión (Calidad 30%)"]
-            self.hint_label.configure(text="💡 Reduce el peso de fotos capturadas a alta resolución.")
+            self.level_label.configure(text=_("comp_level_label") + ":")
+            if get_current_language() == "es":
+                formats = ["Media (Calidad 70%)", "Alta Compresión (Calidad 50%)", "Máxima Compresión (Calidad 30%)"]
+                self.hint_label.configure(text="💡 Reduce el peso de fotos capturadas a alta resolución.")
+            else:
+                formats = ["Medium (70% Quality)", "High Compression (50% Quality)", "Max Compression (30% Quality)"]
+                self.hint_label.configure(text="💡 Reduces the size of photos captured at high resolution.")
         self.level_menu.configure(values=formats)
         self.level_var.set(formats[0])
 
@@ -2467,17 +2774,17 @@ class CompressorPanelFrame(ctk.CTkFrame):
         threading.Thread(target=self._run_compression, daemon=True).start()
 
     def _run_compression(self):
-        category = self.category_var.get()
+        category = self._get_category_key()
         level = self.level_var.get()
         
         total = len(self.selected_files)
-        self._log(f"\n--- Iniciando Compresión: {category} (Nivel: {level}) ---\n")
+        self._log(f"\n--- Iniciando Compresión: {category} (Nivel: {level}) ---\n" if get_current_language() == "es" else f"\n--- Starting Compression: {category} (Level: {level}) ---\n")
         
         success_count = 0
         
-        for i, file_path in enumerate(self.selected_files):
+        for i, file_path in enumerate(list(self.selected_files)):
             if not os.path.exists(file_path):
-                self._log(f"[✗ Error] Archivo no existe: {file_path}\n")
+                self._log(f"[✗ Error] Archivo no existe: {file_path}\n" if get_current_language() == "es" else f"[✗ Error] File does not exist: {file_path}\n")
                 continue
                 
             res = None
@@ -2491,7 +2798,9 @@ class CompressorPanelFrame(ctk.CTkFrame):
                     pct_int = int(overall * 100)
                     self.after(0, lambda p=overall, t=pct_int: (
                         self.progress_bar.set(p),
-                        self.btn_compress.configure(text=f"Comprimiendo {t}%... 🗜")
+                        self.btn_compress.configure(
+                            text=f"Comprimiendo {t}%... 🗜" if get_current_language() == "es" else f"Compressing {t}%... 🗜"
+                        )
                     ))
                 return cb
 
@@ -2499,9 +2808,9 @@ class CompressorPanelFrame(ctk.CTkFrame):
             
             if category == "Video":
                 comp_param = "Media (Buena Calidad)"
-                if "Alta" in level:
+                if "Alta" in level or "High" in level:
                     comp_param = "Alta (Para Redes Sociales)"
-                elif "Extrema" in level:
+                elif "Extrema" in level or "Extreme" in level:
                     comp_param = "Extrema"
                 
                 ext_orig = os.path.splitext(file_path)[1][1:].upper()
@@ -2519,9 +2828,9 @@ class CompressorPanelFrame(ctk.CTkFrame):
                 
             elif category == "Imagen":
                 comp_param = "Media (Buena Calidad)"
-                if "Alta Compresión" in level:
+                if "Alta Compresión" in level or "High Compression" in level:
                     comp_param = "Alta (Para Redes Sociales)"
-                elif "Máxima Compresión" in level:
+                elif "Máxima Compresión" in level or "Max Compression" in level:
                     comp_param = "Extrema"
                     
                 ext_orig = os.path.splitext(file_path)[1][1:].upper()
@@ -2534,13 +2843,16 @@ class CompressorPanelFrame(ctk.CTkFrame):
                 new_size = os.path.getsize(res) / (1024 * 1024)
                 savings = ((orig_size - new_size) / orig_size) * 100
                 self._log(f"[✓] {os.path.basename(file_path)}: {orig_size:.1f} MB → {new_size:.1f} MB  (−{savings:.0f}%)\n")
+                if file_path in self.selected_files:
+                    self.selected_files.remove(file_path)
+                    self.after(0, self._update_files_list_ui)
             elif res is None:
-                self._log(f"[✗] {os.path.basename(file_path)}: Falló la compresión. Revisa el Registro de Actividad.\n")
+                self._log(f"[❌] {os.path.basename(file_path)}: Falló la compresión. Revisa el Registro de Actividad.\n" if get_current_language() == "es" else f"[❌] {os.path.basename(file_path)}: Compression failed. Check Activity Log.\n")
 
             # Marcar archivo completo
             self.after(0, lambda p=(i+1)/total: self.progress_bar.set(p))
             
-        self._log(f"\n--- Compresión Finalizada: {success_count} de {total} procesados. ---\n")
+        self._log(f"\n--- Compresión Finalizada: {success_count} de {total} procesados. ---\n" if get_current_language() == "es" else f"\n--- Compression Finished: {success_count} of {total} processed. ---\n")
         
         from core.utils import show_windows_notification
         if success_count == total:
