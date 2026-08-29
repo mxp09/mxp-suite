@@ -194,9 +194,13 @@ class UpdateChecker:
         """
         Devuelve la actualización disponible, o None.
 
-        Sin `force`, no consulta más de una vez cada 6 horas ni avisa de una
-        versión que el usuario haya omitido. Cualquier fallo de red devuelve
-        None en silencio: el updater nunca es motivo para molestar al usuario.
+        `force` solo salta el límite de una consulta cada 6 horas — pensado
+        para un futuro botón "buscar actualizaciones ahora". NO debe además
+        ignorar una versión que el usuario ya marcó como "omitir": son dos
+        decisiones independientes, y antes compartían la misma bandera, así
+        que forzar la consulta también volvía a ofrecer una versión que el
+        usuario había rechazado explícitamente. Cualquier fallo de red
+        devuelve None en silencio: el updater nunca es motivo para molestar.
         """
         state = self._read_state()
         if not force and time.time() - state.get("last_check", 0) < CHECK_INTERVAL_SECONDS:
@@ -212,7 +216,7 @@ class UpdateChecker:
 
         if info is None or not is_newer(info.version, self.current_version):
             return None
-        if not force and self.is_skipped(info.version):
+        if self.is_skipped(info.version):
             return None
         return info
 
