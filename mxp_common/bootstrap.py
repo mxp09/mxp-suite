@@ -16,27 +16,44 @@ no deja terminar en verde con las dependencias a medias, que es exactamente lo
 que dejaba a la gente con una app instalada que no funcionaba.
 """
 
+import logging
 import os
 import shutil
 import sys
+import traceback
 import zipfile
 
 from mxp_common.binaries import EngineManager, FFmpegManager
 from mxp_common.paths import get_bin_dir, get_engine_dir
+
+_logger = logging.getLogger("MXP")
 
 
 def _log(message: str):
     """
     Una línea por paso. El instalador la recoge si necesita mostrarla.
 
-    En una app empaquetada con console=False, sys.stdout es None y un print
-    normal reventaria con AttributeError — justo en el modo donde menos se
-    puede permitir fallar, porque es el que decide si la instalacion termina
-    en verde o en rojo.
+    Va al logger de archivo (setup_logging() ya se ejecutó antes de llegar
+    aquí, desde el punto de entrada) Y a stdout si lo hay. Solo con print()
+    esto se perdía en silencio: cuando Inno Setup lanza el .exe con Exec()
+    (en vez de un terminal), el proceso hijo no tiene un stdout válido al que
+    escribir — que es precisamente el caso que más importa depurar, porque es
+    la instalación real y desatendida, no una prueba manual en consola.
     """
+    _logger.info(message)
     try:
         if sys.stdout is not None:
             print(message, flush=True)
+    except Exception:
+        pass
+
+
+def _log_exception(message: str):
+    """Como _log(), pero incluyendo el traceback completo en el archivo de log."""
+    _logger.error(message, exc_info=True)
+    try:
+        if sys.stdout is not None:
+            print(f"{message}\n{traceback.format_exc()}", flush=True)
     except Exception:
         pass
 
