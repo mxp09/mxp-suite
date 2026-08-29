@@ -7,13 +7,13 @@
 ;  gente acababa con una copia instalada a la que le faltaba ffmpeg o el motor
 ;  de descarga, sin ninguna forma de saberlo hasta que algo fallaba.
 ;
-;  Compilar:  iscc /DAppVersion=1.1.0 installer\MXPDownloader.iss
+;  Compilar:  iscc /DAppVersion=3.1.0 installer\MXPDownloader.iss
 ;  (normalmente lo lanza scripts\release.ps1, que saca la versión de
 ;   mxp_common\version.py para que no haya dos números que puedan divergir)
 ; ============================================================================
 
 #ifndef AppVersion
-  #define AppVersion "1.1.0"
+  #define AppVersion "3.1.0"
 #endif
 
 #define AppName        "MXP Downloader"

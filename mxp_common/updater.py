@@ -25,9 +25,12 @@ import requests
 
 from mxp_common.binaries import download_to_file
 from mxp_common.paths import get_app_dir
-from mxp_common.version import GITHUB_REPO, __version__
+from mxp_common.version import ASSET_PREFIX, GITHUB_REPO, __version__
 
-GITHUB_API = "https://api.github.com/repos/{repo}/releases/latest"
+# Se pide la LISTA de releases, no /releases/latest. El repo mxp-suite lo
+# comparten varias apps, así que el release más reciente puede perfectamente
+# ser de otra: hay que buscar el más nuevo que traiga el instalador de ESTA.
+GITHUB_API = "https://api.github.com/repos/{repo}/releases?per_page=30"
 CHECK_INTERVAL_SECONDS = 6 * 60 * 60
 CHECKSUM_ASSET = "SHA256SUMS.txt"
 
@@ -76,9 +79,11 @@ class UpdateChecker:
 
     STATE_FILE = "update.json"
 
-    def __init__(self, repo: str = GITHUB_REPO, current_version: str = __version__):
+    def __init__(self, repo: str = GITHUB_REPO, current_version: str = __version__,
+                 asset_prefix: str = ASSET_PREFIX):
         self.repo = repo
         self.current_version = current_version
+        self.asset_prefix = asset_prefix
         self._state_path = os.path.join(get_app_dir(), self.STATE_FILE)
 
     # ── Estado persistido ──────────────────────────────────────────────────
@@ -108,25 +113,17 @@ class UpdateChecker:
 
     # ── Comprobación ───────────────────────────────────────────────────────
 
-    def fetch_latest(self, timeout: float = 6.0) -> Optional[UpdateInfo]:
+    def _parse_release(self, data: dict) -> Optional[UpdateInfo]:
         """
-        Pide el último release a GitHub. Devuelve None si no hay ninguno
-        utilizable. Propaga excepciones de red — quien llama decide qué hacer.
-        """
-        response = requests.get(
-            GITHUB_API.format(repo=self.repo),
-            timeout=timeout,
-            headers={"Accept": "application/vnd.github+json"},
-        )
-        response.raise_for_status()
-        data = response.json()
+        Convierte un release de la API en UpdateInfo, o None si no es de esta app.
 
+        Un release solo cuenta si trae un instalador cuyo nombre empieza por el
+        prefijo de la app. Es lo que permite que varias apps compartan el repo
+        mxp-suite sin que el Denoiser ofrezca actualizarse al Downloader — y lo
+        que hace que los releases antiguos, que solo llevan .zip sueltos, se
+        ignoren en vez de tomarse por versiones instalables.
+        """
         if data.get("draft") or data.get("prerelease"):
-            return None
-
-        tag = data.get("tag_name", "")
-        version = re.sub(r"^[vV]", "", tag)
-        if not version:
             return None
 
         installer = None
@@ -135,10 +132,26 @@ class UpdateChecker:
             name = asset.get("name", "")
             if name == CHECKSUM_ASSET:
                 checksum_url = asset.get("browser_download_url")
-            elif name.lower().endswith(".exe") and installer is None:
+            elif name.startswith(self.asset_prefix) and name.lower().endswith(".exe"):
                 installer = asset
 
         if installer is None:
+            return None
+
+        # La versión se saca de la etiqueta. En un repo compartido las etiquetas
+        # pueden llevar prefijo ("downloader-v3.1.0"), así que si de la etiqueta
+        # no sale nada usable se recurre al nombre del instalador, que siempre
+        # lleva la versión dentro (MXP_Downloader_Setup_v3.1.0.exe).
+        tag = data.get("tag_name", "")
+        version = ""
+        match = re.search(r"(\d+(?:\.\d+)+)", tag)
+        if match:
+            version = match.group(1)
+        else:
+            match = re.search(r"[vV](\d+(?:\.\d+)+)", installer["name"])
+            if match:
+                version = match.group(1)
+        if not version:
             return None
 
         return UpdateInfo(
@@ -150,6 +163,32 @@ class UpdateChecker:
             size=installer.get("size", 0),
             checksum_url=checksum_url,
         )
+
+    def fetch_latest(self, timeout: float = 6.0) -> Optional[UpdateInfo]:
+        """
+        Busca el release más reciente que corresponda a esta app.
+
+        Devuelve None si no hay ninguno utilizable. Propaga excepciones de red —
+        quien llama decide qué hacer.
+        """
+        response = requests.get(
+            GITHUB_API.format(repo=self.repo),
+            timeout=timeout,
+            headers={"Accept": "application/vnd.github+json"},
+        )
+        response.raise_for_status()
+
+        releases = response.json()
+        if isinstance(releases, dict):  # por si algún día se apunta a /latest
+            releases = [releases]
+
+        # GitHub los devuelve del más nuevo al más viejo, pero se ordena por
+        # versión de todas formas: la fecha de publicación no siempre coincide
+        # con el orden de versiones (un parche de una rama antigua, por ejemplo).
+        candidates = [info for info in (self._parse_release(r) for r in releases) if info]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda info: parse_version(info.version))
 
     def check(self, force: bool = False) -> Optional[UpdateInfo]:
         """
