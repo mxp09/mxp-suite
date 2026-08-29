@@ -1,0 +1,9 @@
+[project]
+name = "mxp-downloader"
+version = "3.1.0"
+description = "MXP Downloader"
+# Migrado de Python 3.10 a 3.11: yt-dlp ya avisa que deprecara 3.10 y lo
+# retirara poco despues de que 3.10 llegue a su end-of-life (oct-2026). Ver
+# mxp_common/binaries.py (EngineManager) para el mecanismo de rollback que
+# protege contra una actualizacion de yt-dlp incompatible mientras tanto.
+requires-python = ">=3.11,<3.12"

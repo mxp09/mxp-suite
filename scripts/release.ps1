@@ -36,6 +36,11 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectRoot
 
+# Interprete usado para compilar. Debe coincidir con requires-python en
+# pyproject.toml. Python 3.10 quedo descartado: yt-dlp ya avisa que lo
+# deprecara y dejara de arrancar en el sin previo aviso (ver EngineManager).
+$PyVersion = "3.11"
+
 function Write-Step($message) {
     Write-Host ""
     Write-Host "==> $message" -ForegroundColor Cyan
@@ -43,7 +48,7 @@ function Write-Step($message) {
 
 # ── 1. Version, desde la unica fuente que existe ────────────────────────────
 Write-Step "Leyendo la version"
-$Version = (py -3.10 -c "import sys; sys.path.insert(0, '.'); from mxp_common.version import __version__; print(__version__)").Trim()
+$Version = (py "-$PyVersion" -c "import sys; sys.path.insert(0, '.'); from mxp_common.version import __version__; print(__version__)").Trim()
 if (-not $Version) { throw "No se pudo leer la version de mxp_common\version.py" }
 Write-Host "    Version: $Version"
 
@@ -53,7 +58,7 @@ $InstallerPath = Join-Path $ProjectRoot "dist\installer\$InstallerName"
 
 # ── 2. Ejecutable ───────────────────────────────────────────────────────────
 Write-Step "Compilando con PyInstaller"
-py -3.10 -m PyInstaller --noconfirm --clean "MXP Downloader.spec"
+py "-$PyVersion" -m PyInstaller --noconfirm --clean "MXP Downloader.spec"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller fallo" }
 
 $ExePath = Join-Path $ProjectRoot "dist\MXP Downloader\MXP Downloader.exe"
@@ -74,6 +79,9 @@ if ($LASTEXITCODE -ne 0) {
 Write-Step "Compilando el instalador con Inno Setup"
 $Iscc = "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe"
 if (-not (Test-Path $Iscc)) { $Iscc = "$env:ProgramFiles\Inno Setup 6\ISCC.exe" }
+# winget instala Inno Setup por usuario en algunas maquinas (visto en la
+# maquina de build), no bajo Program Files.
+if (-not (Test-Path $Iscc)) { $Iscc = "$env:LocalAppData\Programs\Inno Setup 6\ISCC.exe" }
 if (-not (Test-Path $Iscc)) {
     throw "No se encuentra Inno Setup. Instalalo con: winget install JRSoftware.InnoSetup"
 }
@@ -104,7 +112,7 @@ if ($SkipPublish) {
 }
 
 Write-Step "Publicando el release $Tag en GitHub"
-$Repo = (py -3.10 -c "import sys; sys.path.insert(0, '.'); from mxp_common.version import GITHUB_REPO; print(GITHUB_REPO)").Trim()
+$Repo = (py "-$PyVersion" -c "import sys; sys.path.insert(0, '.'); from mxp_common.version import GITHUB_REPO; print(GITHUB_REPO)").Trim()
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     throw "No se encuentra gh. Instalalo con: winget install GitHub.cli"

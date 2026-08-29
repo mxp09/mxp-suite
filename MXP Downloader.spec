@@ -12,6 +12,10 @@ import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.win32.versioninfo import (
+    VSVersionInfo, FixedFileInfo, StringFileInfo, StringTable,
+    StringStruct, VarFileInfo, VarStruct,
+)
 
 sys.path.insert(0, str(Path(SPECPATH)))
 from mxp_common.version import (  # noqa: E402

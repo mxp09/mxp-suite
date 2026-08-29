@@ -294,6 +294,34 @@ class EngineManager:
                 return version, entry["url"]
         raise RuntimeError("PyPI no devolvió un wheel utilizable de yt-dlp")
 
+    def _verify_importable(self) -> bool:
+        """
+        Comprueba que el motor recién instalado arranca de verdad, lanzando un
+        `import yt_dlp` en un intérprete aparte (no en este proceso, para no
+        arriesgarse a dejarlo en un estado raro si el import falla a medias).
+
+        Solo hace falta en Python 3.10: yt-dlp ya avisa que lo va a deprecar y
+        lo retirará "poco después" de que 3.10 llegue a su end-of-life
+        (oct-2026, ver https://github.com/yt-dlp/yt-dlp/issues/16916). Sin esta
+        comprobación, el día que publiquen una versión que ya no arranque en
+        3.10, la actualización automática de las 6h la instalaría igual y
+        rompería la app en todas las máquinas sin que nadie tocara nada. En
+        3.11+ no hace falta el coste extra de lanzar un subproceso.
+        """
+        if sys.version_info >= (3, 11):
+            return True
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", "import yt_dlp"],
+                cwd=self.engine_dir,
+                capture_output=True,
+                timeout=15,
+                creationflags=_NO_WINDOW,
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
     def install(
         self,
         version: str,
@@ -332,15 +360,40 @@ class EngineManager:
         final_pkg = os.path.join(self.engine_dir, "yt_dlp")
         old_pkg = final_pkg + ".old"
         shutil.rmtree(old_pkg, ignore_errors=True)
-        if os.path.isdir(final_pkg):
+        had_previous = os.path.isdir(final_pkg)
+        if had_previous:
             os.replace(final_pkg, old_pkg)
         os.replace(staged_pkg, final_pkg)
+
+        # Verificación real: el swap puede haber dejado un paquete que no
+        # arranca en este intérprete (típicamente porque yt-dlp ya dejó de
+        # soportar esta versión de Python). Si es así, se deshace en vez de
+        # dejar la app sin motor funcional hasta el próximo reinicio.
+        if not self._verify_importable():
+            shutil.rmtree(final_pkg, ignore_errors=True)
+            if had_previous:
+                os.replace(old_pkg, final_pkg)
+            shutil.rmtree(staging, ignore_errors=True)
+            stamp = self._read_stamp()
+            stamp["last_check"] = time.time()
+            stamp["blocked_version"] = version
+            self._write_stamp(stamp)
+            self._report(
+                f"El motor yt-dlp {version} no es compatible con esta versión "
+                f"de Python; se mantiene la versión anterior.",
+                -1,
+            )
+            return had_previous
+
         shutil.rmtree(old_pkg, ignore_errors=True)
         shutil.rmtree(staging, ignore_errors=True)
 
-        self._write_stamp(
+        stamp = self._read_stamp()
+        stamp.pop("blocked_version", None)
+        stamp.update(
             {"version": version, "installed_at": time.time(), "last_check": time.time()}
         )
+        self._write_stamp(stamp)
         self._report(f"Motor yt-dlp {version} listo", end_pct)
         return True
 
@@ -373,11 +426,22 @@ class EngineManager:
         except Exception:
             return None
 
+        # last_check se actualiza siempre que la consulta a PyPI responda,
+        # pase lo que pase después: si no, un install() que falla por algo
+        # ajeno a la versión (disco lleno, etc.) haría que se reintentara en
+        # cada llamada en vez de esperar las 6h.
         stamp["last_check"] = time.time()
         self._write_stamp(stamp)
 
         if version == stamp.get("version"):
             return None
+
+        # Ya se intentó esta versión y no arrancó en este Python (ver
+        # install()/_verify_importable). No tiene sentido volver a
+        # descargarla cada 6h hasta que PyPI publique una más nueva.
+        if version == stamp.get("blocked_version"):
+            return None
+
         return version if self.install(version, url) else None
 
 
