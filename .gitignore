@@ -1,0 +1,24 @@
+# Builds
+dist/
+build/
+*.spec.bak
+
+# Binarios descargados (se obtienen del instalador o en el primer arranque)
+bin/
+engine/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Logs y scratch
+logs/
+scratch/
+out.txt
+err.txt
+
+# Empaquetados
+*.zip
