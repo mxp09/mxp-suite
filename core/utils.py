@@ -24,18 +24,10 @@ def get_resource_path(relative_path: str) -> str:
     return os.path.join(base_path, relative_path)
 
 
-def get_app_dir() -> str:
-    """Retorna la ruta de datos de la aplicación en AppData."""
-    app_dir = os.path.join(os.getenv("APPDATA", os.path.expanduser("~")), "MXP_Downloader")
-    os.makedirs(app_dir, exist_ok=True)
-    return app_dir
-
-
-def get_bin_dir() -> str:
-    """Retorna la ruta para los binarios (ffmpeg, yt-dlp)."""
-    bin_dir = os.path.join(get_app_dir(), "bin")
-    os.makedirs(bin_dir, exist_ok=True)
-    return bin_dir
+# Las rutas de datos viven en mxp_common para que la app, el updater y el
+# instalador coincidan siempre en dónde está cada cosa. Se reexportan aquí
+# para no romper los imports existentes.
+from mxp_common.paths import get_app_dir, get_bin_dir, get_engine_dir  # noqa: E402,F401
 
 
 # ─── Patrones de URL por plataforma ────────────────────────────────────────────

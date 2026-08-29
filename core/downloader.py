@@ -8,10 +8,11 @@ import sys
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import yt_dlp
 
+from core import errors
 from core.utils import get_default_download_dir
 
 
@@ -94,8 +95,16 @@ class VideoDownloader:
         audio_bitrate: str = "320",
         cookies_browser: Optional[str] = None,
         cookies_file: Optional[str] = None,
+        noplaylist: bool = True,
+        evasive: bool = False,
     ) -> dict:
-        """Construye el diccionario de opciones para yt-dlp."""
+        """
+        Construye el diccionario de opciones para yt-dlp.
+
+        `evasive` activa la segunda pasada que se usa tras un 403: impersonación
+        TLS y clientes de reproducción alternativos. No se usa de entrada porque
+        es más lenta y no hace falta en la mayoría de descargas.
+        """
 
         output_template = os.path.join(output_dir, "%(title)s.%(ext)s")
 
@@ -137,31 +146,55 @@ class VideoDownloader:
             "outtmpl": output_template,
             "postprocessors": postprocessors,
             "format_sort": ["res", "vcodec:h264", "acodec:aac", "tbr"],
-            "noplaylist": True,
+            "noplaylist": noplaylist,
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
             "overwrites": True,
             "writethumbnail": True,  # Habilitado para incrustar
-            "http_headers": {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/126.0.0.0 Safari/537.36"
-                ),
-            },
+
+            # ── Reintentos ──
+            # Sin esto, un corte momentáneo o un 5xx pasajero mataba la descarga
+            # entera. yt-dlp sabe reintentar solo; solo había que pedírselo.
+            "retries": 5,
+            "fragment_retries": 10,
+            "extractor_retries": 3,
+            "retry_sleep_functions": {"http": lambda n: min(2 ** n, 30)},
+            "sleep_interval_requests": 0.5,
+            "socket_timeout": 30,
+            "ignoreerrors": False,
         }
 
-        # ── Binaries Path (AppData) ──
-        from core.utils import get_bin_dir
-        ffmpeg_dir = get_bin_dir()
-        ffmpeg_exe = os.path.join(ffmpeg_dir, "ffmpeg.exe")
-        
-        if os.path.exists(ffmpeg_exe):
-            opts["ffmpeg_location"] = ffmpeg_exe
-        
-        # Inyectar yt-dlp path si estamos en modo standalone
-        if getattr(sys, 'frozen', False):
+        # NO se fija un User-Agent propio a propósito. La versión anterior
+        # forzaba un Chrome/126 escrito a mano en 2024, que pisaba el UA que
+        # yt-dlp mantiene al día y que, siendo tan viejo, era en sí mismo una
+        # señal de bot para YouTube. Dejar que yt-dlp ponga el suyo es parte
+        # del arreglo del 403, no un descuido.
+
+        if evasive:
+            # Segunda pasada: pedirle a YouTube clientes de reproducción
+            # distintos, que es lo que suele desbloquear un 403.
+            opts["extractor_args"] = {
+                "youtube": {"player_client": ["tv", "web_safari", "android_vr"]}
+            }
+            # Y parecer un navegador de verdad a nivel de TLS. curl_cffi ya
+            # viene empaquetado con la app, pero la impersonación es una mejora
+            # opcional: si esta versión de yt-dlp no la soporta, se sigue sin
+            # ella en vez de tirar la descarga.
+            try:
+                from yt_dlp.networking.impersonate import ImpersonateTarget
+                opts["impersonate"] = ImpersonateTarget("chrome")
+            except Exception:
+                pass
+
+        # ── FFmpeg ──
+        # Se resuelve buscando en bin/ junto al ejecutable, en AppData y en el
+        # PATH, y verificando que el binario responde. Antes se apuntaba a
+        # AppData a ciegas y, en modo empaquetado, se asignaba esa ruta incluso
+        # si el archivo no existía — con lo que el merge fallaba sin explicación.
+        from mxp_common.binaries import resolve_tool
+        ffmpeg_exe = resolve_tool("ffmpeg")
+        if ffmpeg_exe:
             opts["ffmpeg_location"] = ffmpeg_exe
 
         # ── Progress hook ──
@@ -170,9 +203,12 @@ class VideoDownloader:
             opts["postprocessor_hooks"] = [self._make_postprocessor_hook(progress_callback)]
 
         # ── Cookies ──
+        # Antes esto era un elif: elegir navegador hacía que un cookies.txt
+        # seleccionado se ignorase sin decir nada. Ahora se aplican los dos si
+        # el usuario configuró los dos.
         if cookies_browser:
             opts["cookiesfrombrowser"] = (cookies_browser,)
-        elif cookies_file and os.path.isfile(cookies_file):
+        if cookies_file and os.path.isfile(cookies_file):
             opts["cookiefile"] = cookies_file
 
         return opts
@@ -306,47 +342,70 @@ class VideoDownloader:
         self._cancel_event.clear()
         self._is_downloading = True
 
+        def _attempt(evasive: bool):
+            """Una pasada de descarga completa. Devuelve (título, ruta)."""
+            opts = self._build_opts(
+                quality=quality,
+                resolution=resolution,
+                output_dir=output_dir,
+                progress_callback=progress_callback,
+                format_ext=format_ext,
+                audio_bitrate=audio_bitrate,
+                cookies_browser=cookies_browser,
+                cookies_file=cookies_file,
+                evasive=evasive,
+            )
+
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                title = info.get("title", "Video")
+                filepath = ydl.prepare_filename(info)
+
+                # yt-dlp puede cambiar la extensión tras el post-procesado
+                if not os.path.exists(filepath):
+                    base = os.path.basename(os.path.splitext(filepath)[0])
+                    for f in os.listdir(output_dir):
+                        if f.startswith(base):
+                            filepath = os.path.join(output_dir, f)
+                            break
+
+                # Aplicar Trimming si es necesario
+                if (start_time or end_time) and os.path.exists(filepath):
+                    if progress_callback:
+                        progress_callback(ProgressData(
+                            status=DownloadStatus.MERGING,
+                            video_title="Recortando video...",
+                        ))
+                    filepath = self._trim_video(filepath, start_time, end_time)
+
+            return title, filepath
+
         def _run():
             try:
                 if progress_callback:
                     progress_callback(ProgressData(status=DownloadStatus.FETCHING_INFO))
 
-                opts = self._build_opts(
-                    quality=quality,
-                    resolution=resolution,
-                    output_dir=output_dir,
-                    progress_callback=progress_callback,
-                    format_ext=format_ext,
-                    audio_bitrate=audio_bitrate,
-                    cookies_browser=cookies_browser,
-                    cookies_file=cookies_file,
-                )
-
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info = ydl.extract_info(url, download=True) # Descargar directamente para evitar doble llamada si es posible
-                    title = info.get("title", "Video")
-                    filepath = ydl.prepare_filename(info)
-                    
-                    # yt-dlp puede cambiar la extensión tras el post-procesado
-                    if not os.path.exists(filepath):
-                        # Intentar encontrar el archivo con la extensión final
-                        base = os.path.splitext(filepath)[0]
-                        for f in os.listdir(output_dir):
-                            if f.startswith(os.path.basename(base)):
-                                filepath = os.path.join(output_dir, f)
-                                break
-
-                    # Aplicar Trimming si es necesario
-                    if (start_time or end_time) and os.path.exists(filepath):
-                        if progress_callback:
-                            progress_callback(ProgressData(status=DownloadStatus.MERGING, video_title="Recortando video..."))
-                        filepath = self._trim_video(filepath, start_time, end_time)
+                # Primer intento normal. Si el sitio responde con 403 o pide
+                # verificación de bot, se repite una vez con impersonación y
+                # otros clientes de reproducción: eso resuelve la mayoría de
+                # 403 sin que el usuario tenga que tocar nada.
+                try:
+                    title, _filepath = _attempt(evasive=False)
+                except Exception as first_error:
+                    if (self._cancel_event.is_set()
+                            or not errors.is_retryable_with_fallback(first_error)):
+                        raise
+                    if progress_callback:
+                        progress_callback(ProgressData(
+                            status=DownloadStatus.FETCHING_INFO,
+                            video_title="Reintentando con otro método...",
+                        ))
+                    title, _filepath = _attempt(evasive=True)
 
                 if not self._cancel_event.is_set() and progress_callback:
-                    # Registrar en historial (este manager se inyectará o usará globalmente)
                     from core.history import HistoryManager
                     HistoryManager().add_entry(title, url, format_ext)
-                    
+
                     progress_callback(ProgressData(
                         status=DownloadStatus.FINISHED,
                         percent=100.0,
@@ -355,7 +414,12 @@ class VideoDownloader:
 
             except Exception as e:
                 if progress_callback:
-                    progress_callback(ProgressData(status=DownloadStatus.ERROR, error_message=str(e)))
+                    # Mensaje accionable en vez del volcado crudo de yt-dlp
+                    detail = errors.classify(e)
+                    progress_callback(ProgressData(
+                        status=DownloadStatus.ERROR,
+                        error_message=detail.full_text,
+                    ))
             finally:
                 self._is_downloading = False
 
@@ -367,15 +431,109 @@ class VideoDownloader:
         if self._is_downloading:
             self._cancel_event.set()
 
-    def get_info(self, url: str) -> Optional[dict]:
-        """Extrae metadatos del video sin descargar."""
-        opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "noplaylist": True,
-        }
+    def _info_opts(self, cookies_browser=None, cookies_file=None,
+                   noplaylist: bool = True, evasive: bool = False) -> dict:
+        """
+        Opciones para consultar metadatos, derivadas de las mismas que usa la
+        descarga real.
+
+        Antes get_info() tenía su propio diccionario suelto, sin cookies, sin
+        reintentos y sin nada: la vista previa podía fallar en un vídeo que la
+        descarga sí conseguía, y viceversa. Reutilizar _build_opts() elimina
+        esa discrepancia de raíz.
+        """
+        opts = self._build_opts(
+            quality=Quality.BEST,
+            resolution=VideoResolution.BEST,
+            output_dir=os.getcwd(),
+            progress_callback=None,
+            cookies_browser=cookies_browser,
+            cookies_file=cookies_file,
+            noplaylist=noplaylist,
+            evasive=evasive,
+        )
+        # Nada de esto tiene sentido cuando no se descarga
+        for key in ("postprocessors", "writethumbnail", "outtmpl",
+                    "merge_output_format", "overwrites"):
+            opts.pop(key, None)
+        opts["skip_download"] = True
+        return opts
+
+    def get_info(
+        self,
+        url: str,
+        cookies_browser: Optional[str] = None,
+        cookies_file: Optional[str] = None,
+    ) -> Tuple[Optional[dict], Optional["errors.DownloadError"]]:
+        """
+        Extrae metadatos sin descargar.
+
+        Devuelve (info, None) si sale bien, o (None, DownloadError) con la causa
+        REAL del fallo. La versión anterior hacía `except Exception: return None`,
+        así que un 403, un vídeo privado, un bloqueo geográfico y la red caída
+        acababan todos en el mismo mensaje "verifica que sea público y exista" —
+        que en el caso más común (un 403) mandaba al usuario a mirar donde no era.
+        """
+        last_error = None
+        # Primer intento normal; si es un 403 o un bot-check, se repite con
+        # impersonación antes de rendirse.
+        for evasive in (False, True):
+            try:
+                opts = self._info_opts(cookies_browser, cookies_file, evasive=evasive)
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                if info:
+                    return info, None
+                last_error = "El sitio no devolvió información del contenido."
+            except Exception as exc:
+                last_error = exc
+                if not errors.is_retryable_with_fallback(exc):
+                    break
+
+        return None, errors.classify(last_error)
+
+    def expand_playlist(
+        self,
+        url: str,
+        cookies_browser: Optional[str] = None,
+        cookies_file: Optional[str] = None,
+        limit: int = 500,
+    ) -> Tuple[list, Optional[str], Optional["errors.DownloadError"]]:
+        """
+        Convierte una URL de playlist o canal en la lista de URLs que contiene.
+
+        Devuelve (urls, titulo_de_la_lista, error). Si la URL es de un vídeo
+        suelto devuelve esa misma URL en una lista de un elemento, para que
+        quien llame pueda tratar ambos casos igual.
+
+        Existe porque `noplaylist` estaba fijado a True en todo el código: pegar
+        una playlist daba como mucho un vídeo, y a menudo el error genérico.
+        """
         try:
+            opts = self._info_opts(cookies_browser, cookies_file, noplaylist=False)
+            # extract_flat solo lee el índice, sin resolver cada vídeo: una lista
+            # de 200 tarda segundos en vez de minutos.
+            opts["extract_flat"] = "in_playlist"
             with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(url, download=False)
-        except Exception:
-            return None
+                info = ydl.extract_info(url, download=False)
+        except Exception as exc:
+            return [], None, errors.classify(exc)
+
+        if not info:
+            return [], None, errors.classify("El sitio no devolvió información.")
+
+        entries = info.get("entries")
+        if entries is None:
+            return [url], info.get("title"), None
+
+        urls = []
+        for entry in entries:
+            if not entry:
+                continue
+            entry_url = entry.get("url") or entry.get("webpage_url")
+            if entry_url:
+                urls.append(entry_url)
+            if len(urls) >= limit:
+                break
+
+        return urls, info.get("title"), None

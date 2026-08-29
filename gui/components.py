@@ -4,6 +4,7 @@ Cada clase es un frame/widget autocontenido de CustomTkinter.
 """
 
 import os
+import re
 import tkinter as tk
 from tkinter import filedialog
 from typing import Callable, Optional
@@ -12,6 +13,7 @@ import customtkinter as ctk
 
 from gui.theme import Colors, Fonts, Spacing, Radius, PLATFORM_COLORS
 from core.utils import detect_platform, get_platform_icon, validate_url, get_default_download_dir, get_resource_path
+from mxp_common.version import __version__
 from PIL import Image
 
 
@@ -119,23 +121,51 @@ class HeaderFrame(ctk.CTkFrame):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class URLInputFrame(ctk.CTkFrame):
-    """Campo de entrada de URL con detección de plataforma."""
+    """
+    Entrada de URLs, con modo individual y modo lote.
 
-    def __init__(self, master, on_url_change: Optional[Callable] = None, **kwargs):
+    El modo lote existe porque pegar una lista de vídeos en el campo de una
+    sola línea no fallaba de forma visible: se quedaba con el churro entero
+    como si fuera una URL, la consulta de metadatos fallaba, y el usuario veía
+    "verifica que sea público y exista" sobre vídeos perfectamente normales.
+    Ahora pegar varias líneas cambia solo al modo lote y las descarga todas.
+    """
+
+    def __init__(self, master, on_url_change: Optional[Callable] = None,
+                 on_batch_change: Optional[Callable] = None, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
 
         self.on_url_change = on_url_change
+        self.on_batch_change = on_batch_change
+        self.batch_mode = False
 
         # ── Label ──
         label_frame = ctk.CTkFrame(self, fg_color="transparent")
         label_frame.pack(fill="x", padx=Spacing.LG, pady=(Spacing.MD, Spacing.XS))
 
-        ctk.CTkLabel(
+        self.title_label = ctk.CTkLabel(
             label_frame,
             text="URL del video",
             font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"),
             text_color=Colors.TEXT_PRIMARY,
-        ).pack(side="left")
+        )
+        self.title_label.pack(side="left")
+
+        self.batch_toggle = ctk.CTkButton(
+            label_frame,
+            text="≡ Varios vídeos",
+            font=(Fonts.FAMILY, Fonts.SIZE_TINY, "bold"),
+            fg_color="transparent",
+            hover_color=Colors.BG_HOVER,
+            text_color=Colors.TEXT_SECONDARY,
+            corner_radius=Radius.SM,
+            border_width=1,
+            border_color=Colors.BORDER_LIGHT,
+            width=110,
+            height=24,
+            command=self.toggle_batch_mode,
+        )
+        self.batch_toggle.pack(side="left", padx=(Spacing.SM, 0))
 
         self.platform_badge = ctk.CTkLabel(
             label_frame,
@@ -158,6 +188,7 @@ class URLInputFrame(ctk.CTkFrame):
             border_color=Colors.BORDER,
         )
         input_frame.pack(fill="x", padx=Spacing.LG)
+        self.input_frame = input_frame
 
         self.url_entry = ctk.CTkEntry(
             input_frame,
@@ -173,6 +204,18 @@ class URLInputFrame(ctk.CTkFrame):
 
         # Registrar evento de escritura
         self.url_entry.bind("<KeyRelease>", self._on_key_release)
+
+        # ── Caja de lote (oculta hasta que se activa el modo) ──
+        self.batch_box = ctk.CTkTextbox(
+            input_frame,
+            font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
+            text_color=Colors.TEXT_PRIMARY,
+            fg_color="transparent",
+            border_width=0,
+            height=120,
+            wrap="none",
+        )
+        self.batch_box.bind("<KeyRelease>", self._on_key_release)
 
         self.paste_btn = ctk.CTkButton(
             input_frame,
@@ -203,20 +246,136 @@ class URLInputFrame(ctk.CTkFrame):
         self.clear_btn.pack(side="right", pady=Spacing.SM)
         self.clear_btn.pack_forget()  # Oculto hasta que haya texto
 
+        # Solo visible en modo lote
+        self.import_btn = ctk.CTkButton(
+            input_frame,
+            text="📄 Importar .txt",
+            font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
+            fg_color=Colors.BG_TERTIARY,
+            hover_color=Colors.BG_HOVER,
+            text_color=Colors.TEXT_SECONDARY,
+            corner_radius=Radius.SM,
+            width=120,
+            height=36,
+            command=self._import_from_file,
+        )
+
+    # ── Modo lote ──────────────────────────────────────────────────────────
+
+    def toggle_batch_mode(self, enable: Optional[bool] = None):
+        """Cambia entre una URL y varias, conservando lo ya escrito."""
+        target = (not self.batch_mode) if enable is None else enable
+        if target == self.batch_mode:
+            return
+
+        existing = self.get_urls()
+        self.batch_mode = target
+
+        if target:
+            self.url_entry.pack_forget()
+            self.batch_box.pack(side="left", fill="both", expand=True,
+                                padx=Spacing.MD, pady=Spacing.SM)
+            self.batch_box.delete("1.0", "end")
+            self.batch_box.insert("1.0", "\n".join(existing))
+            self.title_label.configure(text="URLs (una por línea)")
+            self.batch_toggle.configure(
+                text="← Una sola URL",
+                text_color=Colors.ACCENT_YELLOW,
+                border_color=Colors.ACCENT_GOLD,
+            )
+            self.import_btn.pack(side="right", padx=(0, Spacing.SM), pady=Spacing.SM)
+            self.platform_badge.pack_forget()
+        else:
+            self.batch_box.pack_forget()
+            self.url_entry.pack(side="left", fill="x", expand=True, padx=Spacing.MD)
+            self.url_entry.delete(0, "end")
+            if existing:
+                self.url_entry.insert(0, existing[0])
+            self.title_label.configure(text="URL del video")
+            self.batch_toggle.configure(
+                text="≡ Varios vídeos",
+                text_color=Colors.TEXT_SECONDARY,
+                border_color=Colors.BORDER_LIGHT,
+            )
+            self.import_btn.pack_forget()
+
+        self._on_key_release(None)
+        if self.on_batch_change:
+            self.on_batch_change(self.batch_mode)
+
+    def _import_from_file(self):
+        """Carga una lista de URLs desde un .txt."""
+        path = filedialog.askopenfilename(
+            title="Selecciona un archivo con las URLs",
+            filetypes=[("Archivos de texto", "*.txt"), ("Todos los archivos", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+        except Exception:
+            return
+
+        urls = self._extract_urls(content)
+        if not urls:
+            return
+        self.toggle_batch_mode(True)
+        self.batch_box.delete("1.0", "end")
+        self.batch_box.insert("1.0", "\n".join(urls))
+        self._on_key_release(None)
+
+    @staticmethod
+    def _extract_urls(text: str) -> list:
+        """
+        Saca todas las URLs de un texto, vengan por líneas o pegadas seguidas.
+
+        Se aceptan también listas separadas por comas o espacios, que es como
+        la gente suele tenerlas cuando las copia de una hoja de cálculo.
+        """
+        if not text:
+            return []
+        found = re.findall(r"https?://\S+", text)
+        cleaned = []
+        for url in found:
+            url = url.strip().rstrip(",;)\"'")
+            if url and url not in cleaned:
+                cleaned.append(url)
+        if cleaned:
+            return cleaned
+        # Sin http:// explícito, tratar cada línea no vacía como candidata
+        return [line.strip() for line in text.splitlines() if line.strip()]
+
     def _paste_from_clipboard(self):
-        """Pega contenido del portapapeles."""
+        """
+        Pega el portapapeles. Si trae más de una URL, cambia solo al modo lote
+        en vez de meter la lista entera en un campo de una línea.
+        """
         try:
             clipboard = self.clipboard_get()
-            if clipboard:
-                self.url_entry.delete(0, "end")
-                self.url_entry.insert(0, clipboard.strip())
-                self._on_key_release(None)
         except tk.TclError:
-            pass
+            return
+        if not clipboard:
+            return
+
+        urls = self._extract_urls(clipboard)
+        if len(urls) > 1:
+            self.toggle_batch_mode(True)
+            self.batch_box.delete("1.0", "end")
+            self.batch_box.insert("1.0", "\n".join(urls))
+        elif self.batch_mode:
+            self.batch_box.insert("end", ("\n" if self.get_urls() else "") + clipboard.strip())
+        else:
+            self.url_entry.delete(0, "end")
+            self.url_entry.insert(0, clipboard.strip())
+        self._on_key_release(None)
 
     def _clear(self):
         """Limpia el campo de URL."""
-        self.url_entry.delete(0, "end")
+        if self.batch_mode:
+            self.batch_box.delete("1.0", "end")
+        else:
+            self.url_entry.delete(0, "end")
         self.platform_badge.pack_forget()
         self.clear_btn.pack_forget()
         if self.on_url_change:
@@ -224,34 +383,52 @@ class URLInputFrame(ctk.CTkFrame):
 
     def _on_key_release(self, event):
         """Detecta plataforma al escribir."""
-        url = self.url_entry.get().strip()
+        urls = self.get_urls()
+        url = urls[0] if urls else ""
 
-        if url:
+        if urls:
             self.clear_btn.pack(side="right", pady=Spacing.SM)
+        else:
+            self.clear_btn.pack_forget()
+
+        if url and not self.batch_mode:
             platform = detect_platform(url)
             icon = get_platform_icon(platform)
             color = PLATFORM_COLORS.get(platform, Colors.TEXT_SECONDARY)
-
             self.platform_badge.configure(
                 text=f"  {icon} {platform}  ",
                 text_color=color,
             )
             self.platform_badge.pack(side="right")
+        elif self.batch_mode and len(urls) > 1:
+            self.platform_badge.configure(
+                text=f"  {len(urls)} enlaces  ",
+                text_color=Colors.ACCENT_YELLOW,
+            )
+            self.platform_badge.pack(side="right")
         else:
             self.platform_badge.pack_forget()
-            self.clear_btn.pack_forget()
 
         if self.on_url_change:
             self.on_url_change(url)
 
     def get_url(self) -> str:
-        """Retorna la URL actual."""
-        return self.url_entry.get().strip()
+        """La primera URL. Se mantiene por compatibilidad con el modo individual."""
+        urls = self.get_urls()
+        return urls[0] if urls else ""
+
+    def get_urls(self) -> list:
+        """Todas las URLs introducidas, sin duplicados."""
+        if self.batch_mode:
+            return self._extract_urls(self.batch_box.get("1.0", "end"))
+        text = self.url_entry.get().strip()
+        return [text] if text else []
 
     def set_enabled(self, enabled: bool):
         """Habilita o deshabilita el input."""
         state = "normal" if enabled else "disabled"
         self.url_entry.configure(state=state)
+        self.batch_box.configure(state=state)
         self.paste_btn.configure(state=state)
 
 
@@ -515,7 +692,7 @@ class CookieSettingsFrame(ctk.CTkFrame):
         # ── Botón toggle ──
         self.toggle_btn = ctk.CTkButton(
             self,
-            text="🍪  Configuración de Cookies (Opcional)  ▸",
+            text="🍪  Cookies del navegador — soluciona errores 403  ▸",
             font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
             fg_color="transparent",
             hover_color=Colors.BG_HOVER,
@@ -617,15 +794,20 @@ class CookieSettingsFrame(ctk.CTkFrame):
             text_color=Colors.TEXT_MUTED,
         ).pack(anchor="w", padx=Spacing.LG, pady=(0, Spacing.MD))
 
+        # Desplegado desde el arranque: las cookies resuelven la mayoría de los
+        # errores 403 y de "confirma que no eres un bot", y colapsado por
+        # defecto prácticamente nadie llegaba a descubrirlas.
+        self._toggle()
+
     def _toggle(self):
         """Expande/colapsa el panel."""
         self._expanded = not self._expanded
         if self._expanded:
             self.content.pack(fill="x", padx=Spacing.LG, pady=(Spacing.XS, 0))
-            self.toggle_btn.configure(text="🍪  Configuración de Cookies (Opcional)  ▾")
+            self.toggle_btn.configure(text="🍪  Cookies del navegador — soluciona errores 403  ▾")
         else:
             self.content.pack_forget()
-            self.toggle_btn.configure(text="🍪  Configuración de Cookies (Opcional)  ▸")
+            self.toggle_btn.configure(text="🍪  Cookies del navegador — soluciona errores 403  ▸")
 
     def _browse_cookies(self):
         """Abre diálogo para seleccionar cookies.txt."""
@@ -798,6 +980,50 @@ class ProgressPanel(ctk.CTkFrame):
         self.items: dict[str, DownloadProgressItem] = {}
         self.cancel_callback = cancel_callback
 
+        # ── Barra de estado de la tanda ──
+        # Con una lista de 30 vídeos, saber cuántas van, cuántas esperan y
+        # cuántas fallaron es lo que diferencia una descarga controlada de
+        # mirar una pared de barras sin contexto.
+        self.status_bar = ctk.CTkFrame(self, fg_color="transparent")
+
+        self.status_label = ctk.CTkLabel(
+            self.status_bar,
+            text="",
+            font=(Fonts.FAMILY, Fonts.SIZE_SMALL),
+            text_color=Colors.TEXT_SECONDARY,
+            anchor="w",
+        )
+        self.status_label.pack(side="left", fill="x", expand=True)
+
+        self.retry_btn = ctk.CTkButton(
+            self.status_bar,
+            text="↻ Reintentar fallidos",
+            font=(Fonts.FAMILY, Fonts.SIZE_SMALL, "bold"),
+            fg_color=Colors.BG_TERTIARY,
+            hover_color=Colors.BG_HOVER,
+            text_color=Colors.ACCENT_YELLOW,
+            corner_radius=Radius.SM,
+            width=150,
+            height=28,
+        )
+
+    def set_status(self, text: str):
+        """Texto de estado de la tanda. Cadena vacía lo oculta."""
+        if text:
+            self.show()
+            self.status_label.configure(text=text)
+            self.status_bar.pack(fill="x", padx=Spacing.LG, pady=(0, Spacing.XS))
+        else:
+            self.status_bar.pack_forget()
+
+    def set_retry_action(self, callback):
+        """Muestra el botón de reintentar, o lo oculta si callback es None."""
+        if callback is None:
+            self.retry_btn.pack_forget()
+        else:
+            self.retry_btn.configure(command=callback)
+            self.retry_btn.pack(side="right", padx=(Spacing.SM, 0))
+
     def show(self):
         if not self._visible:
             self.container.pack(fill="x", padx=Spacing.LG, pady=(0, Spacing.SM))
@@ -806,6 +1032,7 @@ class ProgressPanel(ctk.CTkFrame):
     def hide(self):
         if self._visible:
             self.container.pack_forget()
+            self.status_bar.pack_forget()
             self._visible = False
 
     def add_job(self, url, title):
@@ -1421,7 +1648,7 @@ class FooterFrame(ctk.CTkFrame):
 
         ctk.CTkLabel(
             self,
-            text="Powered by yt-dlp  ·  Local & Free  ·  v1.0",
+            text=f"Powered by yt-dlp  ·  Local & Free  ·  v{__version__}",
             font=(Fonts.FAMILY, Fonts.SIZE_TINY),
             text_color=Colors.TEXT_MUTED,
         ).pack(pady=Spacing.SM)
