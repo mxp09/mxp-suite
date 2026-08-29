@@ -2,7 +2,7 @@ import subprocess
 import os
 import re
 import threading
-from core.utils import get_bin_dir
+from mxp_common.binaries import FFmpegManager
 
 def _parse_duration_secs(duration_str):
     """Convierte HH:MM:SS.ms a segundos."""
@@ -57,13 +57,15 @@ def _run_ffmpeg_with_progress(cmd, log_callback, progress_callback):
 
 class MediaEngine:
     def __init__(self):
-        # Buscar ffmpeg en el bin_dir local o en el PATH
-        bin_dir = get_bin_dir()
-        self.ffmpeg_path = os.path.join(bin_dir, "ffmpeg.exe")
-        
-        import shutil
-        if not os.path.exists(self.ffmpeg_path):
-            self.ffmpeg_path = shutil.which("ffmpeg") or "ffmpeg"
+        # Se reutiliza el mismo FFmpegManager que usa core/downloader.py: mira
+        # bin/ junto al ejecutable, luego AppData, luego el PATH, y VERIFICA
+        # que el binario responde antes de darlo por bueno. Antes esto solo
+        # comprobaba os.path.exists() en un único sitio y, si faltaba, pasaba
+        # el literal "ffmpeg" a subprocess a ciegas — si no estaba en el PATH,
+        # el conversor/compresor fallaba con un FileNotFoundError sin explicar
+        # por qué, y aunque estuviera, un binario corrupto no se detectaba.
+        self._ffmpeg_manager = FFmpegManager()
+        self.ffmpeg_path = self._ffmpeg_manager.ffmpeg or "ffmpeg"
 
     def process_video(self, input_path, target_format, output_dir=None, compression="Ninguno", log_callback=print, progress_callback=None):
         output_format = target_format.lower()

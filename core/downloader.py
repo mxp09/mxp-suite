@@ -14,6 +14,16 @@ import yt_dlp
 
 from core import errors
 from core.utils import get_default_download_dir
+from mxp_common.binaries import FFmpegManager
+
+# Instancia única a nivel de módulo. FFmpegManager ya cachea internamente la
+# ruta resuelta (self._paths), pero eso no servía de nada si cada llamada
+# creaba su propio FFmpegManager de usar y tirar — resolve_tool() lanzaba un
+# "ffmpeg -version" real en cada _build_opts/_info_opts/expand_playlist,
+# hasta dos veces por descarga y dos por cada consulta de metadatos (que
+# ahora se dispara en cada URL pegada). Con la instancia compartida, el
+# subproceso solo se ejecuta una vez por sesión.
+_ffmpeg = FFmpegManager()
 
 
 # ─── Tipos ──────────────────────────────────────────────────────────────────────
@@ -192,10 +202,10 @@ class VideoDownloader:
         # PATH, y verificando que el binario responde. Antes se apuntaba a
         # AppData a ciegas y, en modo empaquetado, se asignaba esa ruta incluso
         # si el archivo no existía — con lo que el merge fallaba sin explicación.
-        from mxp_common.binaries import resolve_tool
-        ffmpeg_exe = resolve_tool("ffmpeg")
-        if ffmpeg_exe:
-            opts["ffmpeg_location"] = ffmpeg_exe
+        # Se usa la instancia compartida `_ffmpeg` (no `resolve_tool()` suelto)
+        # para no relanzar "ffmpeg -version" en cada llamada.
+        if _ffmpeg.ffmpeg:
+            opts["ffmpeg_location"] = _ffmpeg.ffmpeg
 
         # ── Progress hook ──
         if progress_callback:
@@ -290,31 +300,58 @@ class VideoDownloader:
 
         return hook
 
-    def _trim_video(self, input_path: str, start_time: str, end_time: str) -> str:
-        """Recorta el video usando ffmpeg de forma rápida (stream copy)."""
+    def _trim_video(self, input_path: str, start_time: str, end_time: str,
+                    progress_callback: Optional[ProgressCallback] = None) -> str:
+        """
+        Recorta el video usando ffmpeg de forma rápida (stream copy).
+
+        Antes esto comprobaba `os.path.exists(get_bin_dir()/ffmpeg.exe)` a
+        secas — exactamente el patrón que el resto del archivo dejó atrás en
+        favor de la instancia compartida `_ffmpeg`, que además VERIFICA que
+        el binario responde. Si ffmpeg solo está en el PATH o en la carpeta
+        del instalador, esta comprobación vieja lo daba por ausente y el
+        recorte se saltaba en silencio: el usuario recibía el vídeo completo
+        creyendo que sí se había recortado. Ahora, si no se puede recortar,
+        se avisa por el mismo canal de progreso en vez de fingir que salió bien.
+        """
         import subprocess
-        from core.utils import get_bin_dir
-        
-        ffmpeg_exe = os.path.join(get_bin_dir(), "ffmpeg.exe")
-        if not os.path.exists(ffmpeg_exe):
-            return input_path # No se puede recortar
+
+        ffmpeg_exe = _ffmpeg.ffmpeg
+        if not ffmpeg_exe:
+            if progress_callback:
+                progress_callback(ProgressData(
+                    status=DownloadStatus.MERGING,
+                    video_title="No se encontró FFmpeg: se entrega el video sin recortar.",
+                ))
+            return input_path
 
         ext = os.path.splitext(input_path)[1]
         output_path = input_path.replace(ext, f"_trimmed{ext}")
-        
+
         cmd = [ffmpeg_exe, "-y", "-i", input_path]
         if start_time: cmd += ["-ss", start_time]
         if end_time: cmd += ["-to", end_time]
         cmd += ["-c", "copy", output_path]
-        
+
         try:
             subprocess.run(cmd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
             # Eliminar original si el recorte funcionó
             if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
                 os.remove(input_path)
                 return output_path
-        except Exception:
-            pass
+        except Exception as exc:
+            if progress_callback:
+                progress_callback(ProgressData(
+                    status=DownloadStatus.MERGING,
+                    video_title=f"No se pudo recortar el video ({exc}): se entrega completo.",
+                ))
+            return input_path
+
+        if progress_callback:
+            progress_callback(ProgressData(
+                status=DownloadStatus.MERGING,
+                video_title="No se pudo recortar el video: se entrega completo.",
+            ))
         return input_path
 
     def download(
@@ -376,7 +413,7 @@ class VideoDownloader:
                             status=DownloadStatus.MERGING,
                             video_title="Recortando video...",
                         ))
-                    filepath = self._trim_video(filepath, start_time, end_time)
+                    filepath = self._trim_video(filepath, start_time, end_time, progress_callback)
 
             return title, filepath
 

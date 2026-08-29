@@ -894,10 +894,17 @@ class DownloadButton(ctk.CTkFrame):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class DownloadProgressItem(ctk.CTkFrame):
-    """Elemento individual de progreso de descarga con botón de cancelar."""
-    def __init__(self, master, url, title="Descarga", cancel_callback=None, **kwargs):
+    """
+    Elemento individual de progreso de descarga con botón de cancelar.
+
+    Se identifica por `job_id`, no por la URL. Dos descargas de la misma URL
+    (cancelar y repetir, o la misma URL dos veces en un lote) deben poder
+    tener cada una su propia tarjeta y su propio ciclo de vida — si se
+    identificaran por URL, la segunda pisaría el seguimiento de la primera.
+    """
+    def __init__(self, master, job_id, title="Descarga", cancel_callback=None, **kwargs):
         super().__init__(master, fg_color=Colors.BG_TERTIARY, corner_radius=Radius.SM, border_width=1, border_color=Colors.BORDER, **kwargs)
-        self.url = url
+        self.job_id = job_id
         self.cancel_callback = cancel_callback
         
         # Usar grid para alinear el botón cerrar a la derecha
@@ -956,7 +963,7 @@ class DownloadProgressItem(ctk.CTkFrame):
 
     def _on_cancel(self):
         if self.cancel_callback:
-            self.cancel_callback(self.url)
+            self.cancel_callback(self.job_id)
 
     def update_data(self, status, percent=0.0, speed="", eta="", title=""):
         if title:
@@ -1035,21 +1042,27 @@ class ProgressPanel(ctk.CTkFrame):
             self.status_bar.pack_forget()
             self._visible = False
 
-    def add_job(self, url, title):
+    def add_job(self, job_id, title):
+        """
+        `job_id` identifica la tarjeta; `title` es solo lo que se muestra
+        (arranca siendo la URL, y luego se sustituye por el título real
+        cuando llegan los metadatos). Dos trabajos con la misma URL pero
+        distinto `job_id` son tarjetas independientes a propósito.
+        """
         self.show()
-        if url in self.items:
+        if job_id in self.items:
             return
-        item = DownloadProgressItem(self.container, url, title, cancel_callback=self.cancel_callback)
+        item = DownloadProgressItem(self.container, job_id, title, cancel_callback=self.cancel_callback)
         item.pack(fill="x", pady=Spacing.XS)
-        self.items[url] = item
+        self.items[job_id] = item
 
-    def remove_job(self, url):
-        if url in self.items:
+    def remove_job(self, job_id):
+        if job_id in self.items:
             try:
-                self.items[url].destroy()
+                self.items[job_id].destroy()
             except Exception:
                 pass
-            del self.items[url]
+            del self.items[job_id]
         if not self.items:
             self.hide()
 
@@ -1062,10 +1075,10 @@ class ProgressPanel(ctk.CTkFrame):
         self.items.clear()
         self.hide()
 
-    def update_progress(self, url, status, percent=0.0, speed="", eta="", title=""):
-        if url not in self.items:
-            self.add_job(url, title or url)
-        self.items[url].update_data(status, percent, speed, eta, title)
+    def update_progress(self, job_id, status, percent=0.0, speed="", eta="", title=""):
+        if job_id not in self.items:
+            self.add_job(job_id, title or job_id)
+        self.items[job_id].update_data(status, percent, speed, eta, title)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

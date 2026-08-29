@@ -18,6 +18,22 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+# ── Logging ──
+# Antes, un fallo en la máquina de otra persona no dejaba ningún rastro que
+# revisar: en modo ventana (sin consola) los `print` no van a ninguna parte.
+# A partir de aquí queda un archivo en %APPDATA%/MXP_Downloader/logs/app.log
+# que se puede pedir cuando alguien reporte "no me funciona".
+from mxp_common.logs import setup_logging  # noqa: E402
+
+logger = setup_logging()
+
+
+def _log_unhandled(exc_type, exc_value, exc_tb):
+    logger.critical("Excepción no controlada", exc_info=(exc_type, exc_value, exc_tb))
+
+
+sys.excepthook = _log_unhandled
+
 # ── Motor de descarga ──
 # yt-dlp vive fuera del ejecutable, en %APPDATA%, para poder actualizarse sin
 # reinstalar la app. Esto DEBE ejecutarse antes de cualquier `import yt_dlp`

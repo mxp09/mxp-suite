@@ -3,9 +3,11 @@ Ventana principal de la aplicación Video Downloader.
 Integra todos los componentes y orquesta el flujo de descarga.
 """
 
+import logging
 import os
 import sys
 import queue
+import uuid
 import customtkinter as ctk
 
 from gui.theme import Colors, Fonts, Spacing, Window, Radius
@@ -32,6 +34,8 @@ from core.binaries import BinaryManager
 
 import tkinterdnd2.TkinterDnD as tkdnd
 
+logger = logging.getLogger("MXP")
+
 class App(ctk.CTk, tkdnd.DnDWrapper):
     """Aplicación principal de Video Downloader."""
 
@@ -53,16 +57,24 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
                 self.iconbitmap(icon_path)
         except Exception:
             pass
-        self.active_jobs = {}  # url -> downloader_instance
+        # Los trabajos se identifican por un job_id (uuid) generado al encolar,
+        # NUNCA por la URL. Antes se usaba la URL como clave en todos estos
+        # diccionarios: cancelar una descarga y volver a pegar la misma URL (o
+        # que se repitiera dentro de un lote) hacía que el downloader viejo,
+        # que seguía vivo en su hilo, pisara el seguimiento del nuevo al llegar
+        # su callback tardío — la descarga real seguía corriendo pero quedaba
+        # huérfana e invisible para la UI. Con job_id, dos trabajos de la misma
+        # URL son entidades independientes aunque coincidan en destino.
+        self.active_jobs = {}                # job_id -> instancia de VideoDownloader (solo mientras corre)
         self.downloader = VideoDownloader()
         self._progress_queue: queue.Queue = queue.Queue()
-        self._download_queue: list[dict] = []  # Cola de trabajos pendientes
+        self._download_queue: list[dict] = []  # Cola de trabajos pendientes (cada uno con su job_id)
         self._history_window = None
         self._metadata_queue: queue.Queue[dict] = queue.Queue()
         self._current_metadata_url = ""
         self._metadata_timer = None          # id del debounce de metadatos
-        self._job_settings: dict = {}        # url -> ajustes con los que se lanzó
-        self._failed_jobs: dict = {}         # url -> ajustes, para reintentar
+        self._job_settings: dict = {}        # job_id -> {"url":..., **ajustes} (en cola o corriendo)
+        self._failed_jobs: dict = {}         # job_id -> {"url":..., **ajustes}, para reintentar
 
         # ── Construir interfaz ──
         self._build_ui()
@@ -558,11 +570,23 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
         self._enqueue_urls(urls, settings)
 
     def _enqueue_urls(self, urls: list, settings: dict):
-        """Mete N trabajos en la cola y arranca el procesamiento."""
+        """
+        Mete N trabajos en la cola y arranca el procesamiento.
+
+        La deduplicación mira `_job_settings`, que cubre tanto los trabajos ya
+        corriendo como los que siguen esperando turno en la cola — así pegar
+        la misma URL dos veces (en el mismo lote o en uno posterior mientras
+        el primero sigue vivo) no crea una segunda descarga que choque con la
+        primera por compartir destino.
+        """
+        ya_en_curso = {info["url"] for info in self._job_settings.values()}
         for url in urls:
-            if url in self.active_jobs:
-                continue  # ya se está descargando
-            self._download_queue.append({"url": url, **settings})
+            if url in ya_en_curso:
+                continue  # ya está en cola o descargándose
+            job_id = uuid.uuid4().hex
+            self._job_settings[job_id] = {"url": url, **settings}
+            self._download_queue.append({"job_id": job_id, "url": url, **settings})
+            ya_en_curso.add(url)
 
         self.url_input._clear()
         self._process_next_in_queue()
@@ -574,32 +598,36 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
             return
         self._failed_jobs.clear()
         self.progress_panel.set_status(f"Reintentando {len(failed)} descarga(s)...")
-        for url, settings in failed:
-            self.progress_panel.remove_job(url)
-            self._download_queue.append({"url": url, **settings})
+        for old_job_id, info in failed:
+            self.progress_panel.remove_job(old_job_id)
+            # Se genera un job_id nuevo: es un intento distinto, no una
+            # resurrección del mismo, y así no colisiona si el viejo aún
+            # tuviera algún callback tardío en vuelo.
+            new_job_id = uuid.uuid4().hex
+            self._job_settings[new_job_id] = info
+            self._download_queue.append({"job_id": new_job_id, **info})
         self._process_next_in_queue()
 
     def _process_next_in_queue(self):
         """Procesa los siguientes elementos en la cola respetando el límite de 3 concurrentes."""
         while self._download_queue and len(self.active_jobs) < 3:
             job = self._download_queue.pop(0)
+            job_id = job["job_id"]
             url = job["url"]
-            
+            download_kwargs = {k: v for k, v in job.items() if k != "job_id"}
+
             # Crear un nuevo downloader para esta descarga en paralelo
             downloader = VideoDownloader()
-            self.active_jobs[url] = downloader
-
-            # Recordar con qué ajustes se lanzó, por si hay que reintentarla
-            self._job_settings[url] = {k: v for k, v in job.items() if k != "url"}
+            self.active_jobs[job_id] = downloader
 
             # Mostrar e inicializar el item de progreso específico
             self.progress_panel.show()
-            self.progress_panel.add_job(url, url)
+            self.progress_panel.add_job(job_id, url)
 
             # Lanzar la descarga
             downloader.download(
-                progress_callback=lambda data, u=url: self._enqueue_progress(data, u),
-                **job
+                progress_callback=lambda data, jid=job_id: self._enqueue_progress(data, jid),
+                **download_kwargs
             )
 
         # Con una tanda grande, decir cuántas quedan esperando turno
@@ -618,37 +646,39 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
 
     def _cancel_download(self):
         """Cancela todas las descargas activas y limpia la cola."""
-        for url, downloader in list(self.active_jobs.items()):
+        for job_id, downloader in list(self.active_jobs.items()):
             try:
                 downloader.cancel()
             except Exception:
-                pass
+                logger.exception("Fallo al cancelar el trabajo %s", job_id)
         self.active_jobs.clear()
         self._download_queue.clear()
+        self._job_settings.clear()
         self.progress_panel.clear_all()
         self.download_btn.set_downloading(False)
 
-    def _cancel_single_download(self, url: str):
-        """Cancela una descarga específica por URL."""
-        if url in self.active_jobs:
+    def _cancel_single_download(self, job_id: str):
+        """Cancela una descarga específica por su job_id."""
+        if job_id in self.active_jobs:
             try:
-                self.active_jobs[url].cancel()
+                self.active_jobs[job_id].cancel()
             except Exception:
-                pass
-            del self.active_jobs[url]
-        
+                logger.exception("Fallo al cancelar el trabajo %s", job_id)
+            del self.active_jobs[job_id]
+
         # Eliminar también de la cola pendiente si estaba allí
-        self._download_queue = [j for j in self._download_queue if j["url"] != url]
-        
+        self._download_queue = [j for j in self._download_queue if j["job_id"] != job_id]
+        self._job_settings.pop(job_id, None)
+
         # Quitar de la UI
-        self.progress_panel.remove_job(url)
-        
+        self.progress_panel.remove_job(job_id)
+
         # Si ya no quedan descargas activas, volver a estado normal en el botón principal
         if not self.active_jobs:
             self.download_btn.set_downloading(False)
 
-    def _enqueue_progress(self, data: ProgressData, url: str):
-        self._progress_queue.put((data, url))
+    def _enqueue_progress(self, data: ProgressData, job_id: str):
+        self._progress_queue.put((data, job_id))
 
     def _poll_progress(self):
         # 1. Cola de progreso de descargas
@@ -656,10 +686,10 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
             while not self._progress_queue.empty():
                 item = self._progress_queue.get_nowait()
                 if isinstance(item, tuple) and len(item) == 2:
-                    data, url = item
-                    self._handle_progress(data, url)
+                    data, job_id = item
+                    self._handle_progress(data, job_id)
         except Exception:
-            pass
+            logger.exception("Fallo procesando la cola de progreso")
 
         # 2. Cola de metadatos de miniaturas
         try:
@@ -667,59 +697,60 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
                 meta = self._metadata_queue.get_nowait()
                 self._handle_metadata(meta)
         except Exception:
-            pass
+            logger.exception("Fallo procesando la cola de metadatos")
 
         self.after(50, self._poll_progress)
 
-    def _handle_progress(self, data: ProgressData, url: str):
-        if url not in self.active_jobs:
+    def _handle_progress(self, data: ProgressData, job_id: str):
+        if job_id not in self.active_jobs:
             return
-            
+
         status = data.status
-        
+
         if status == DownloadStatus.FETCHING_INFO:
-            self.progress_panel.update_progress(url, status="Obteniendo información...", percent=0.0)
+            self.progress_panel.update_progress(job_id, status="Obteniendo información...", percent=0.0)
         elif status == DownloadStatus.DOWNLOADING:
             self.progress_panel.update_progress(
-                url, 
-                status="Descargando...", 
+                job_id,
+                status="Descargando...",
                 percent=data.percent,
                 speed=data.speed,
                 eta=data.eta,
                 title=data.video_title or data.filename
             )
         elif status == DownloadStatus.MERGING:
-            self.progress_panel.update_progress(url, status="Procesando/Uniendo audio...", percent=100.0)
+            self.progress_panel.update_progress(job_id, status="Procesando/Uniendo audio...", percent=100.0)
         elif status in (DownloadStatus.FINISHED, DownloadStatus.ERROR, DownloadStatus.CANCELLED):
             if status == DownloadStatus.FINISHED:
-                self.progress_panel.update_progress(url, status="¡Descarga completada! ✅", percent=100.0)
+                self.progress_panel.update_progress(job_id, status="¡Descarga completada! ✅", percent=100.0)
                 show_windows_notification(
                     "¡Descarga Completada! ✅",
                     f"Se ha descargado correctamente: {data.video_title or 'tu archivo multimedia'}."
                 )
             elif status == DownloadStatus.ERROR:
-                self.progress_panel.update_progress(url, status=f"Error: {data.error_message}", percent=0.0)
+                self.progress_panel.update_progress(job_id, status=f"Error: {data.error_message}", percent=0.0)
                 show_windows_notification(
                     "Error de Descarga ❌",
                     f"No se pudo completar la descarga. Error: {data.error_message[:80]}"
                 )
                 # Guardar los ajustes con los que se intentó, para poder
                 # reintentar solo este enlace sin repetir los que sí funcionaron.
-                settings = self._job_settings.get(url)
-                if settings:
-                    self._failed_jobs[url] = settings
+                info = self._job_settings.get(job_id)
+                if info:
+                    self._failed_jobs[job_id] = info
             else:
-                self.progress_panel.update_progress(url, status="Cancelado", percent=0.0)
+                self.progress_panel.update_progress(job_id, status="Cancelado", percent=0.0)
 
-            # Quitar de trabajos activos
-            if url in self.active_jobs:
-                del self.active_jobs[url]
-            self._job_settings.pop(url, None)
+            # Quitar de trabajos activos y de la lista de "en curso" (esto
+            # último es lo que permite reencolar la misma URL después)
+            if job_id in self.active_jobs:
+                del self.active_jobs[job_id]
+            self._job_settings.pop(job_id, None)
 
             # Los fallos se quedan en pantalla: si desaparecen a los 4 segundos
             # como los éxitos, en una tanda larga nadie llega a leer qué pasó.
             if status != DownloadStatus.ERROR:
-                self.after(4000, lambda u=url: self.progress_panel.remove_job(u))
+                self.after(4000, lambda jid=job_id: self.progress_panel.remove_job(jid))
 
             # Procesar el siguiente en la cola
             self._process_next_in_queue()
