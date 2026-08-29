@@ -85,6 +85,12 @@ def _install_engine_blocking() -> bool:
 def main():
     global _ENGINE_READY
 
+    # El instalador nos invoca con --setup-deps para dejar ffmpeg y el motor
+    # listos. En ese modo no se abre ninguna ventana: se instala, se verifica
+    # y se devuelve un codigo de salida que el instalador comprueba.
+    from mxp_common.bootstrap import maybe_run_from_argv
+    maybe_run_from_argv(need_engine=True)
+
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("blue")
 

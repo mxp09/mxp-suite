@@ -1,4 +1,17 @@
+# Dependencias de Python de MXP Downloader.
+#
+# yt-dlp NO aparece aqui a proposito: el motor de descarga vive fuera del
+# ejecutable, en %APPDATA%/MXP_Downloader/engine, y se instala y actualiza
+# solo desde PyPI (ver mxp_common/binaries.py). Fijarlo aqui volveria a
+# congelarlo en la fecha del build, que es exactamente lo que causaba los 403.
+#
+# ffmpeg y ffprobe tampoco: son binarios, los pone el instalador o la propia
+# app la primera vez que arranca.
+
 customtkinter>=5.2.0
+tkinterdnd2>=0.3.0
 requests>=2.31.0
 Pillow>=10.0.0
-yt-dlp>=2024.3.10
+
+# Solo para compilar
+pyinstaller>=6.0.0
