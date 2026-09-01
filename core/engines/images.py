@@ -1,13 +1,30 @@
 from PIL import Image
 import os
 
+# Registrar el lector/escritor de HEIC/HEIF una sola vez, al importar el
+# módulo. Sin esto, Image.open() no reconoce en absoluto un .heic — que es el
+# formato por defecto de las fotos de iPhone, así que sin esto ni siquiera se
+# puede ABRIR una foto de iPhone en el conversor. AVIF no necesita nada de
+# esto: Pillow ya lo trae de fábrica (verificado: PIL.features.check('avif')
+# es True con la versión que ya usa este proyecto).
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except Exception:
+    pass  # sin pillow-heif la app sigue funcionando, solo sin soporte HEIC/HEIF
+
 class ImageEngine:
     def process_image(self, input_path, target_format, output_dir=None, compression="Ninguno", log_callback=print):
          output_format = target_format.upper()
          ext = target_format.lower()
          if output_format == "JPG":
              output_format = "JPEG"
-             
+         elif output_format == "HEIC":
+             # El nombre de archivo sigue siendo .heic (lo que la gente
+             # reconoce), pero Pillow/pillow-heif solo aceptan "HEIF" como
+             # identificador de formato al guardar — "HEIC" da KeyError.
+             output_format = "HEIF"
+
          base_name = os.path.splitext(os.path.basename(input_path))[0]
          if output_dir:
              output_path = os.path.join(output_dir, f"{base_name}_compressed.{ext}")
@@ -30,7 +47,7 @@ class ImageEngine:
                  if img.mode in ("RGBA", "P") and output_format in ["JPEG", "BMP"]:
                      img = img.convert("RGB")
                  
-                 if output_format in ["JPEG", "WEBP"]:
+                 if output_format in ["JPEG", "WEBP", "AVIF", "HEIF"]:
                      img.save(output_path, output_format, quality=quality)
                  else:
                      img.save(output_path, output_format)

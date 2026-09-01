@@ -33,6 +33,12 @@ tmp_ret = collect_all('customtkinter')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('tkinterdnd2')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# pillow-heif trae su propia libheif compilada (binario nativo) además de
+# código Python — collect_all es necesario, un simple hiddenimports no
+# arrastraría esa .dll y el soporte de HEIC/HEIF fallaría solo en el .exe
+# congelado (funcionando bien al correr desde el código fuente).
+tmp_ret = collect_all('pillow_heif')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 a = Analysis(
     ['MXPDOWNLOADER.pyw'],

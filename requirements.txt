@@ -12,6 +12,9 @@ customtkinter>=5.2.0
 tkinterdnd2>=0.3.0
 requests>=2.31.0
 Pillow>=10.0.0
+# Lee y escribe HEIC/HEIF (formato por defecto de fotos de iPhone). AVIF no
+# necesita nada aparte: Pillow ya lo trae de fabrica desde hace varias versiones.
+pillow-heif>=0.18.0
 
 # Solo para compilar
 pyinstaller>=6.0.0

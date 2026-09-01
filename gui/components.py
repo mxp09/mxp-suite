@@ -2159,7 +2159,10 @@ class ConverterPanelFrame(ctk.CTkFrame):
             ]
         elif category == "Imagen":
             filetypes = [
-                ("Archivos de Imagen", "*.jpg;*.jpeg;*.png;*.webp;*.bmp"),
+                # .heic/.heif es el formato por defecto de fotos de iPhone —
+                # sin pillow-heif (core/engines/images.py) ni esto, esas fotos
+                # ni siquiera aparecerían al buscar archivos.
+                ("Archivos de Imagen", "*.jpg;*.jpeg;*.png;*.webp;*.bmp;*.heic;*.heif;*.avif"),
                 ("Todos los archivos", "*.*")
             ]
         else:
@@ -2191,13 +2194,19 @@ class ConverterPanelFrame(ctk.CTkFrame):
         self.format_menu.configure(state="normal")
         if category == "Video":
             self.format_label.configure(text="Formato Destino:")
-            formats = ["MP4", "MKV", "MOV", "AVI", "WEBM"]
+            # "MP4 (HEVC)" y "WEBM (AV1)" son opciones nuevas junto a las de
+            # siempre — MP4 sigue siendo H.264 por defecto (máxima
+            # compatibilidad). core/engines/video_audio.py usa GPU si la
+            # detecta funcional, con reintento automático por CPU si falla.
+            formats = ["MP4", "MP4 (HEVC)", "MKV", "MOV", "AVI", "WEBM", "WEBM (AV1)"]
         elif category == "Audio":
             self.format_label.configure(text="Formato Destino:")
-            formats = ["MP3", "WAV", "FLAC", "M4A"]
+            formats = ["MP3", "WAV", "FLAC", "M4A", "OGG"]
         elif category == "Imagen":
             self.format_label.configure(text="Formato Destino:")
-            formats = ["JPG", "PNG", "WEBP", "BMP"]
+            # AVIF y HEIC son nuevos. AVIF lo lee/escribe Pillow de fábrica;
+            # HEIC necesita pillow-heif (core/engines/images.py lo registra).
+            formats = ["JPG", "PNG", "WEBP", "BMP", "AVIF", "HEIC"]
         self.format_menu.configure(values=formats)
         self.format_var.set(formats[0])
 
@@ -2640,7 +2649,7 @@ class CompressorPanelFrame(ctk.CTkFrame):
             ]
         elif category == "Imagen":
             filetypes = [
-                ("Archivos de Imagen", "*.jpg;*.jpeg;*.png;*.webp;*.bmp"),
+                ("Archivos de Imagen", "*.jpg;*.jpeg;*.png;*.webp;*.bmp;*.heic;*.heif;*.avif"),
                 ("Todos los archivos", "*.*")
             ]
         else:
