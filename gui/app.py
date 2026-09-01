@@ -5,6 +5,7 @@ Integra todos los componentes y orquesta el flujo de descarga.
 
 import logging
 import os
+import re
 import sys
 import queue
 import uuid
@@ -525,8 +526,22 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
 
     @staticmethod
     def _looks_like_playlist(url: str) -> bool:
-        """Heurística barata para no consultar la red en cada enlace suelto."""
-        markers = ("list=", "/playlist", "/channel/", "/c/", "/@", "/user/", "/sets/")
+        """
+        Heurística barata para no consultar la red en cada enlace suelto.
+
+        Un "list=RD..." de YouTube NO cuenta como playlist a propósito: es el
+        Mix/Radio automático que YouTube engancha a casi cualquier vídeo
+        (sobre todo en directos y en "Reproduciendo a continuación") — no es
+        algo que el usuario haya pedido, es un efecto secundario de cómo
+        YouTube arma la URL al reproducir o compartir un vídeo normal.
+        Tratarlo como playlist real expandía un solo vídeo pegado en decenas
+        de canciones sin relación, sin que nadie lo pidiera. Un "list=PL..."
+        (playlist de verdad, creada por alguien) sigue tratándose como lista.
+        """
+        match = re.search(r"[?&]list=([\w-]+)", url)
+        if match:
+            return not match.group(1).startswith("RD")
+        markers = ("/playlist", "/channel/", "/c/", "/@", "/user/", "/sets/")
         return any(marker in url for marker in markers)
 
     def _expand_and_enqueue(self, url: str, settings: dict):
@@ -564,6 +579,25 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
             return
 
         if len(urls) > 1:
+            # Antes esto encolaba los N vídeos directamente, sin preguntar —
+            # solo con un texto de estado fácil de no ver. Pegar un enlace que
+            # el usuario creía de un solo vídeo (p. ej. una URL de directo con
+            # un "list=" real que sí es una lista) terminaba descargando
+            # decenas de vídeos sin que nadie lo pidiera, y sin más aviso que
+            # ese texto. Ahora se pregunta explícitamente antes de encolar.
+            import tkinter.messagebox as messagebox
+            quiere_todos = messagebox.askyesno(
+                "Se detectó una lista de vídeos",
+                f"El enlace pegado pertenece a la lista «{title or 'sin título'}», "
+                f"que tiene {len(urls)} vídeos.\n\n"
+                f"¿Quieres descargarlos todos?\n\n"
+                f"Si eliges \"No\", se descargará solo el vídeo que pegaste.",
+                parent=self,
+            )
+            if not quiere_todos:
+                self.progress_panel.set_status("")
+                self._enqueue_urls([url], settings)
+                return
             self.progress_panel.set_status(
                 f"Lista «{title or 'sin título'}»: {len(urls)} vídeos en cola."
             )

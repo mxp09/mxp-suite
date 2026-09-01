@@ -37,6 +37,16 @@ class DownloadError:
 # de YouTube también contiene la palabra "Sign in".
 _RULES = [
     (
+        "cookie_decrypt",
+        [r"could not (find|copy) .*cookies? database", r"could not.*be decrypted",
+         r"failed to decrypt", r"cannot decrypt .*cookies", r"could not load cookies"],
+        "No se pudieron leer las cookies del navegador que elegiste.",
+        "Suele pasar porque el navegador está abierto y bloquea su propio "
+        "archivo de cookies: ciérralo del todo (revisa que no siga en la "
+        "bandeja del sistema) y vuelve a intentarlo. Si sigue sin funcionar, "
+        "usa un archivo cookies.txt exportado en su lugar (Ajustes → Cookies).",
+    ),
+    (
         "bot_check",
         [r"sign in to confirm.*not a bot", r"confirm you.?re not a bot",
          r"failed to extract any player response", r"please sign in"],
