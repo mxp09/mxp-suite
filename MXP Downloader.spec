@@ -43,18 +43,39 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        'numpy', 'scipy', 'pandas', 'matplotlib',
-        # yt-dlp queda FUERA del ejecutable a propósito. Empaquetado, el motor
-        # se congelaba en la fecha del build y, como los sitios cambian su
-        # extracción cada pocas semanas, acababa devolviendo 403 sin arreglo
-        # posible salvo recompilar y redistribuir la app entera. Ahora vive en
-        # %APPDATA%/MXP_Downloader/engine y se actualiza solo.
-        'yt_dlp',
-    ],
+    # yt_dlp NO va en excludes, a propósito. El motor sigue viviendo fuera del
+    # .exe, en %APPDATA%/MXP_Downloader/engine, y actualizándose solo — eso no
+    # cambia. Lo que cambió es CÓMO se logra: antes se excluía del análisis
+    # entero, así que PyInstaller nunca veía sus imports y no empaquetaba la
+    # librería estándar (ni los paquetes opcionales) que necesita. En
+    # producción salió como "ModuleNotFoundError: No module named 'optparse'",
+    # y arreglado eso, el mismo problema volvió a aparecer con 'html.parser'
+    # un paso más adelante — intentar mantener a mano la lista de todo lo que
+    # yt_dlp importa es una fuente interminable de este mismo bug.
+    #
+    # Ahora se deja que Analysis vea yt_dlp (tiene que estar `pip install`ado
+    # en el entorno donde se compila — solo para que el análisis lo encuentre,
+    # nunca se ejecuta desde aquí) para que descubra TODO lo que de verdad
+    # necesita: no solo la librería estándar completa, sino también sus
+    # dependencias opcionales de terceros (mutagen, brotli, certifi,
+    # pycryptodomex, websockets — instalar con
+    # `pip install "yt-dlp[default]"`), que antes ni se consideraban y que
+    # mejoran de verdad la compatibilidad con más sitios y códecs.
+    # El propio código de yt_dlp se retira de `a.pure` más abajo, después del
+    # análisis: así el .exe se queda sin él (sigue viviendo en el motor
+    # externo) pero se lleva puesto todo lo que descubrió que hacía falta.
+    excludes=['numpy', 'scipy', 'pandas', 'matplotlib'],
     noarchive=False,
     optimize=0,
 )
+
+# Fuera el código propio de yt_dlp (queda vivo en el motor externo
+# actualizable) — pero solo eso: todo lo demás que Analysis descubrió al
+# caminar sus imports (stdlib completa, mutagen, brotli, certifi,
+# pycryptodomex, websockets...) se queda, porque el resto de la app puede
+# necesitarlo igual y ya está resuelto y verificado.
+a.pure = [entry for entry in a.pure if entry[0] != 'yt_dlp' and not entry[0].startswith('yt_dlp.')]
+
 pyz = PYZ(a.pure)
 
 # Recurso de versión de Windows, generado desde mxp_common/version.py para que
