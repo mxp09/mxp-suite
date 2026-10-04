@@ -11,7 +11,7 @@
 
 **Correcciones**
 - Las descargas ya no se marcan como completadas antes de tiempo.
-- Las descargas en WAV y WEBM vuelven a funcionar.
+- Las descargas en WAV, WEBM, MKV y MOV vuelven a funcionar.
 - Recortar baja solo el tramo elegido, más rápido y con el corte exacto.
 - El compresor cumple de verdad los límites de 16 MB y 8 MB.
 - La ventana ya no se congela al terminar una descarga.
