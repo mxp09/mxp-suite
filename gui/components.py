@@ -2405,8 +2405,8 @@ class CompressorPanelFrame(ctk.CTkFrame):
         self.level_menu.configure(state="normal")
         if category == "Video":
             self.level_label.configure(text="Nivel de Compresión:")
-            formats = ["Media (Buen balance)", "Alta (WhatsApp/Discord - Max 16MB)", "Extrema (Correo - Max 8MB)"]
-            self.hint_label.configure(text="El nivel 'Alta' comprime a 720p y el bitrate. 'Extrema' reduce a 480p.")
+            formats = ["Media (Buen balance)", "WhatsApp / Discord (máx. 16 MB)", "Correo (máx. 8 MB)"]
+            self.hint_label.configure(text="Los tamaños máximos se cumplen de verdad: se calcula el bitrate y se codifica en 2 pasadas.")
         elif category == "Audio":
             self.level_label.configure(text="Bitrate Objetivo:")
             formats = ["128 kbps (Ahorro de espacio)", "96 kbps (Móvil básico)", "64 kbps (Baja calidad/Voz)"]
@@ -2476,14 +2476,16 @@ class CompressorPanelFrame(ctk.CTkFrame):
             prog_cb = make_progress_cb(file_base_progress, file_range)
             
             if category == "Video":
-                comp_param = "Media (Buena Calidad)"
-                if "Alta" in level:
-                    comp_param = "Alta (Para Redes Sociales)"
-                elif "Extrema" in level:
-                    comp_param = "Extrema"
-                
-                ext_orig = os.path.splitext(file_path)[1][1:].upper()
-                res = self.media_engine.process_video(file_path, ext_orig, self.output_dir, comp_param, self._log_callback, progress_callback=prog_cb)
+                target_mb = 16 if "16 MB" in level else 8 if "8 MB" in level else None
+                if target_mb:
+                    res = self.media_engine.compress_to_size(
+                        file_path, target_mb - 0.5, self.output_dir, 1280 if target_mb == 16 else 854,
+                        self._log_callback, progress_callback=prog_cb)
+                else:
+                    ext_orig = os.path.splitext(file_path)[1][1:].upper()
+                    res = self.media_engine.process_video(file_path, ext_orig, self.output_dir,
+                                                          "Media (Buena Calidad)", self._log_callback,
+                                                          progress_callback=prog_cb)
                 
             elif category == "Audio":
                 bitrate = "128k"

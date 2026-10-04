@@ -184,6 +184,63 @@ class MediaEngine:
             log_callback(f"[✗ Error] Excepción inesperada al procesar video: {e}")
             return None
 
+    def _duration(self, path):
+        ffprobe = self._ffmpeg_manager.ffprobe
+        if not ffprobe:
+            return None
+        try:
+            out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+                                 capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW).stdout
+            return float(out.strip())
+        except (ValueError, OSError):
+            return None
+
+    def compress_to_size(self, input_path, target_mb, output_dir=None, max_width=1280,
+                         log_callback=print, progress_callback=None):
+        """
+        Comprime un vídeo para que quepa en `target_mb` (WhatsApp, Discord, correo).
+
+        Antes los niveles "máx. 16 MB / 8 MB" solo subían el CRF: el peso final
+        dependía del vídeo y podía pasarse de largo. Aquí el bitrate se calcula
+        desde la duración y se codifica en 2 pasadas (libx264), que es lo que
+        clava el tamaño. ponytail: solo CPU; NVENC/QSV no hacen 2 pasadas iguales.
+        """
+        duration = self._duration(input_path)
+        if not duration:
+            log_callback("[✗ Error] No se pudo leer la duración del vídeo.")
+            return None
+        audio_kbps = 96
+        # 4 % de margen para el contenedor y la variación del encoder
+        video_kbps = int(target_mb * 8 * 1024 * 0.96 / duration) - audio_kbps
+        if video_kbps < 80:
+            log_callback(f"[✗ Error] El vídeo es demasiado largo ({duration / 60:.0f} min) para caber en {target_mb} MB.")
+            return None
+        base_name = os.path.splitext(os.path.basename(input_path))[0]
+        output_path = os.path.join(output_dir or os.path.dirname(input_path), f"{base_name}_{int(target_mb + 0.5)}MB.mp4")
+        passlog = os.path.join(get_app_dir(), "x264_2pass")
+        common = ["-c:v", "libx264", "-preset", "medium", "-b:v", f"{video_kbps}k",
+                  "-vf", f"scale='min({max_width},iw)':-2", "-passlogfile", passlog]
+        log_callback(f"[VIDEO] {os.path.basename(input_path)} → máx. {target_mb} MB ({video_kbps} kbps, 2 pasadas)...")
+        half = (lambda base: (lambda p: progress_callback(base + p / 2))) if progress_callback else (lambda base: None)
+        try:
+            rc, err = _run_ffmpeg_with_progress([self.ffmpeg_path, "-y", "-i", input_path, *common, "-pass", "1",
+                                                 "-an", "-f", "null", "NUL"], log_callback, half(0.0))
+            if rc == 0:
+                rc, err = _run_ffmpeg_with_progress([self.ffmpeg_path, "-y", "-i", input_path, *common, "-pass", "2",
+                                                     "-c:a", "aac", "-b:a", f"{audio_kbps}k", output_path],
+                                                    log_callback, half(0.5))
+        finally:
+            for ext in ("-0.log", "-0.log.mbtree"):
+                try:
+                    os.remove(passlog + ext)
+                except OSError:
+                    pass
+        if rc != 0:
+            log_callback(f"[✗ Error] FFmpeg falló (código {rc}): {_relevant_error(err)}")
+            return None
+        log_callback(f"[✓ Éxito] Generado: {os.path.basename(output_path)}")
+        return output_path
+
     def process_audio(self, input_path, target_format, output_dir=None, log_callback=print, bitrate=None, progress_callback=None):
         output_format = target_format.lower()
         base_name = os.path.splitext(os.path.basename(input_path))[0]
