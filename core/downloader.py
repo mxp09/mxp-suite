@@ -14,7 +14,7 @@ import yt_dlp
 
 from core import errors
 from core.utils import get_default_download_dir
-from mxp_common.binaries import FFmpegManager
+from mxp_common.binaries import DenoManager, FFmpegManager
 
 # Instancia única a nivel de módulo. FFmpegManager ya cachea internamente la
 # ruta resuelta (self._paths), pero eso no servía de nada si cada llamada
@@ -24,6 +24,10 @@ from mxp_common.binaries import FFmpegManager
 # ahora se dispara en cada URL pegada). Con la instancia compartida, el
 # subproceso solo se ejecuta una vez por sesión.
 _ffmpeg = FFmpegManager()
+_deno = DenoManager()
+
+# Contenedores donde yt-dlp puede incrustar la miniatura (EmbedThumbnailPP).
+THUMBNAIL_FORMATS = {"mp3", "m4a", "mp4", "m4v", "mov", "mkv", "mka", "flac", "ogg", "opus"}
 
 
 # ─── Tipos ──────────────────────────────────────────────────────────────────────
@@ -128,40 +132,42 @@ class VideoDownloader:
                     "preferredquality": audio_bitrate,
                 },
                 {"key": "FFmpegMetadata", "add_metadata": True},
-                {"key": "EmbedThumbnail", "already_have_thumbnail": False},
             ]
         else:
-            max_h = resolution.height
-            if max_h is not None:
-                format_str = (
-                    f"bestvideo[height<={max_h}][ext=mp4]+bestaudio[ext=m4a]"
-                    f"/bestvideo[height<={max_h}]+bestaudio"
-                    f"/best[height<={max_h}]"
-                    f"/bestvideo+bestaudio/best"
-                )
-            else:
-                format_str = (
-                    "bestvideo[ext=mp4]+bestaudio[ext=m4a]"
-                    "/bestvideo+bestaudio"
-                    "/best"
-                )
+            # WEBM solo admite VP9/AV1 + Opus/Vorbis: pedir streams mp4+m4a
+            # (H.264/AAC) y luego unirlos en .webm fallaba con "Conversion
+            # failed". El resto de contenedores (mp4/mkv/mov) aceptan H.264.
+            # ponytail: sin re-codificación; un sitio sin streams webm puede
+            # seguir fallando en WEBM (YouTube siempre los tiene).
+            v_ext, a_ext = ("webm", "webm") if format_ext == "webm" else ("mp4", "m4a")
+            h = f"[height<={resolution.height}]" if resolution.height else ""
+            format_str = (
+                f"bestvideo{h}[ext={v_ext}]+bestaudio[ext={a_ext}]"
+                f"/bestvideo{h}+bestaudio/best{h}/bestvideo+bestaudio/best"
+            )
             postprocessors = [
                 {"key": "FFmpegMetadata", "add_metadata": True},
-                {"key": "EmbedThumbnail", "already_have_thumbnail": False},
             ]
+
+        # yt-dlp solo sabe incrustar portada en estos contenedores; en WAV o
+        # WEBM el postprocesador lanza error y tumbaba la descarga entera.
+        embed_thumb = format_ext in THUMBNAIL_FORMATS
+        if embed_thumb:
+            postprocessors.append({"key": "EmbedThumbnail", "already_have_thumbnail": False})
 
         opts = {
             "format": format_str,
             "merge_output_format": format_ext,
             "outtmpl": output_template,
             "postprocessors": postprocessors,
-            "format_sort": ["res", "vcodec:h264", "acodec:aac", "tbr"],
+            "format_sort": ["res", "vcodec:vp9", "acodec:opus", "tbr"] if format_ext == "webm"
+                           else ["res", "vcodec:h264", "acodec:aac", "tbr"],
             "noplaylist": noplaylist,
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
             "overwrites": True,
-            "writethumbnail": True,  # Habilitado para incrustar
+            "writethumbnail": embed_thumb,
 
             # ── Reintentos ──
             # Sin esto, un corte momentáneo o un 5xx pasajero mataba la descarga
@@ -172,6 +178,8 @@ class VideoDownloader:
             "retry_sleep_functions": {"http": lambda n: min(2 ** n, 30)},
             "sleep_interval_requests": 0.5,
             "socket_timeout": 30,
+            # Descarga fragmentos (DASH/HLS: YouTube, directos) en paralelo.
+            "concurrent_fragment_downloads": 4,
             "ignoreerrors": False,
         }
 
@@ -206,6 +214,11 @@ class VideoDownloader:
         # para no relanzar "ffmpeg -version" en cada llamada.
         if _ffmpeg.ffmpeg:
             opts["ffmpeg_location"] = _ffmpeg.ffmpeg
+
+        # Runtime JS para los retos de YouTube (yt-dlp >= 2025.11). Sin él,
+        # YouTube devuelve menos formatos o directamente 403.
+        if _deno.path:
+            opts["js_runtimes"] = {"deno": {"path": _deno.path}}
 
         # ── Progress hook ──
         if progress_callback:
@@ -284,19 +297,13 @@ class VideoDownloader:
             if self._cancel_event.is_set():
                 return
 
-            status = d.get("status", "")
-            if status == "started":
-                progress = ProgressData(
-                    status=DownloadStatus.MERGING,
-                    percent=100.0,
-                )
-                callback(progress)
-            elif status == "finished":
-                progress = ProgressData(
-                    status=DownloadStatus.FINISHED,
-                    percent=100.0,
-                )
-                callback(progress)
+            # Solo MERGING. Este hook salta una vez por CADA postprocesador
+            # (metadatos, miniatura...), así que emitir FINISHED aquí daba la
+            # descarga por terminada tras el primero: la app liberaba el hueco
+            # de concurrencia y avisaba "completado" mientras aún se
+            # procesaba. El único FINISHED lo emite _run() al acabar del todo.
+            if d.get("status") in ("started", "finished"):
+                callback(ProgressData(status=DownloadStatus.MERGING, percent=100.0))
 
         return hook
 

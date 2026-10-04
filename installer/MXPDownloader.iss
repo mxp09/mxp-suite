@@ -157,23 +157,27 @@ begin
       if FFmpegZipPath <> '' then
         Params := Params + ' --ffmpeg-zip "' + FFmpegZipPath + '"';
 
-      DepsPage.SetProgress(30, 100);
-      if Exec(ExpandConstant('{app}\{#AppExeName}'), Params, '',
-              SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-        DepsInstalled := (ResultCode = 0)
-      else
-        DepsInstalled := False;
-
-      DepsPage.SetProgress(100, 100);
+      // No se termina "en verde" con dependencias a medias: si --setup-deps
+      // falla (sin red, antivirus...), se ofrece reintentar en bucle. Cada
+      // reintento descarga solo lo que falte; lo ya verificado se salta.
+      repeat
+        DepsPage.SetProgress(30, 100);
+        if Exec(ExpandConstant('{app}\{#AppExeName}'), Params, '',
+                SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+          DepsInstalled := (ResultCode = 0)
+        else
+          DepsInstalled := False;
+        DepsPage.SetProgress(100, 100);
+      until DepsInstalled or (MsgBox(
+        'No se pudieron preparar todos los componentes (FFmpeg, motor de ' +
+        'descarga o Deno). Comprueba tu conexión a internet.' + #13#10#13#10 +
+        '¿Reintentar ahora?', mbError, MB_RETRYCANCEL) = IDCANCEL);
     finally
       DepsPage.Hide;
     end;
 
     if not DepsInstalled then
-      MsgBox('La instalación ha terminado, pero algunos componentes no se ' +
-             'pudieron preparar.' + #13#10#13#10 +
-             'La aplicación volverá a intentarlo automáticamente al abrirse. ' +
-             'Asegúrate de tener conexión a internet la primera vez que la uses.',
-             mbInformation, MB_OK);
+      MsgBox('Faltan componentes. La aplicación terminará de prepararlos ' +
+             'al abrirse, con conexión a internet.', mbInformation, MB_OK);
   end;
 end;

@@ -2211,7 +2211,10 @@ class ConverterPanelFrame(ctk.CTkFrame):
         self.format_var.set(formats[0])
 
     def _log(self, text):
-        """Escribe en la consola de registro."""
+        """Escribe en la consola. Seguro desde cualquier hilo (agenda en Tk)."""
+        self.after(0, self._write_log, text)
+
+    def _write_log(self, text):
         self.log_console.configure(state="normal")
         self.log_console.insert("end", text)
         self.log_console.see("end")
@@ -2694,6 +2697,10 @@ class CompressorPanelFrame(ctk.CTkFrame):
         self.level_var.set(formats[0])
 
     def _log(self, text):
+        """Seguro desde cualquier hilo: el worker de compresión lo llama directo."""
+        self.after(0, self._write_log, text)
+
+    def _write_log(self, text):
         self.log_console.configure(state="normal")
         self.log_console.insert("end", text)
         self.log_console.see("end")

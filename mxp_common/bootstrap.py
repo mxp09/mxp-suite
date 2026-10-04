@@ -23,7 +23,7 @@ import sys
 import traceback
 import zipfile
 
-from mxp_common.binaries import EngineManager, FFmpegManager
+from mxp_common.binaries import DenoManager, EngineManager, FFmpegManager
 from mxp_common.paths import get_bin_dir, get_engine_dir
 
 _logger = logging.getLogger("MXP")
@@ -163,6 +163,18 @@ def run_setup(ffmpeg_zip=None, ytdlp_wheel=None, need_engine=True) -> int:
             else:
                 _log("ERROR: el motor de descarga no quedó utilizable.")
                 ok = False
+
+        # ── Deno (runtime JS que YouTube exige a yt-dlp) ──
+        deno = DenoManager()
+        try:
+            deno.ensure()
+        except Exception as exc:
+            _log(f"ERROR descargando Deno: {exc}")
+        if deno.is_ready():
+            _log("Deno verificado.")
+        else:
+            _log("ERROR: Deno no quedó utilizable.")
+            ok = False
 
     _log("LISTO" if ok else "INCOMPLETO")
     return 0 if ok else 1

@@ -17,7 +17,7 @@ Qué cambió respecto a la versión anterior:
 import threading
 from typing import Callable, Optional
 
-from mxp_common.binaries import EngineManager, FFmpegManager
+from mxp_common.binaries import DenoManager, EngineManager, FFmpegManager
 
 ProgressCallback = Callable[[str, float], None]
 
@@ -29,17 +29,21 @@ class BinaryManager:
         self.progress_callback = progress_callback
         self.ffmpeg = FFmpegManager(progress_callback)
         self.engine = EngineManager(progress_callback)
+        self.deno = DenoManager(progress_callback)
 
     def check_binaries(self) -> bool:
         """True si todo está instalado y responde."""
         self.ffmpeg.refresh()
-        return self.ffmpeg.is_ready() and self.engine.is_installed()
+        self.deno.refresh()
+        return self.ffmpeg.is_ready() and self.engine.is_installed() and self.deno.is_ready()
 
     def missing(self) -> list:
         """Lista legible de lo que falta, para poder decírselo al usuario."""
         pending = list(self.ffmpeg.missing())
         if not self.engine.is_installed():
             pending.append("motor de descarga (yt-dlp)")
+        if not self.deno.is_ready():
+            pending.append("Deno")
         return pending
 
     def setup_binaries(self, on_done: Optional[Callable[[bool], None]] = None):
@@ -61,8 +65,9 @@ class BinaryManager:
             ok = True
             try:
                 # ffmpeg es lo más pesado, se lleva el 70% de la barra
-                ok = self.ffmpeg.ensure(0, 70) and ok
-                ok = self.engine.ensure(70, 100) and ok
+                ok = self.ffmpeg.ensure(0, 60) and ok
+                ok = self.engine.ensure(60, 80) and ok
+                ok = self.deno.ensure(80, 100) and ok
             except Exception as exc:
                 ok = False
                 if self.progress_callback:

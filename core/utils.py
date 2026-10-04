@@ -152,28 +152,34 @@ def format_eta(seconds: float) -> str:
 
 
 def show_windows_notification(title: str, message: str):
-    """Muestra una notificación nativa en Windows usando un script de PowerShell en segundo plano."""
+    """
+    Notificación nativa de Windows (globo) mediante PowerShell, sin bloquear.
+
+    El texto viaja por variables de entorno, NUNCA interpolado en el script:
+    el título del vídeo viene del sitio remoto, y antes un título con una
+    comilla simple cerraba el string de PowerShell y ejecutaba lo que viniera
+    detrás. Además se usa Popen (no run): antes la ventana de Tk se congelaba
+    1-2 s esperando a que PowerShell arrancara en cada descarga terminada.
+    """
     import subprocess
-    # Escapar caracteres conflictivos para PowerShell
-    title_escaped = title.replace('"', '\\"').replace("'", "`'")
-    message_escaped = message.replace('"', '\\"').replace("'", "`'")
-    
     powershell_code = (
-        f"[void] [System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); "
-        f"$icon = [System.Drawing.SystemIcons]::Information; "
-        f"$notification = New-Object System.Windows.Forms.NotifyIcon; "
-        f"$notification.Icon = $icon; "
-        f"$notification.BalloonTipIcon = 'Info'; "
-        f"$notification.BalloonTipText = '{message_escaped}'; "
-        f"$notification.BalloonTipTitle = '{title_escaped}'; "
-        f"$notification.Visible = $True; "
-        f"$notification.ShowBalloonTip(5000);"
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$n = New-Object System.Windows.Forms.NotifyIcon; "
+        "$n.Icon = [System.Drawing.SystemIcons]::Information; "
+        "$n.BalloonTipIcon = 'Info'; "
+        "$n.BalloonTipTitle = $env:MXP_NOTIFY_TITLE; "
+        "$n.BalloonTipText = $env:MXP_NOTIFY_TEXT; "
+        "$n.Visible = $true; "
+        "$n.ShowBalloonTip(5000); "
+        "Start-Sleep -Seconds 6; "
+        "$n.Dispose()"
     )
-    
+    env = dict(os.environ, MXP_NOTIFY_TITLE=title[:63], MXP_NOTIFY_TEXT=message[:255])
     try:
-        subprocess.run(
-            ["powershell", "-Command", powershell_code],
-            creationflags=subprocess.CREATE_NO_WINDOW
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", powershell_code],
+            env=env,
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
     except Exception:
         pass

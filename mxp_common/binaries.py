@@ -8,6 +8,7 @@ encantado y que luego falla en cada conversión sin explicar por qué.
 """
 
 import io
+import re
 import json
 import os
 import shutil
@@ -28,14 +29,21 @@ FFMPEG_ZIP_URL = (
     "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
     "ffmpeg-master-latest-win64-gpl.zip"
 )
-PYPI_YTDLP_JSON = "https://pypi.org/pypi/yt-dlp/json"
+PYPI_JSON = "https://pypi.org/pypi/{package}/json"
+DENO_RELEASE_API = "https://api.github.com/repos/denoland/deno/releases/latest"
+DENO_ASSET = "deno-x86_64-pc-windows-msvc.zip"
+
+# Paquetes que forman el motor. yt_dlp_ejs trae los scripts que resuelven los
+# retos JavaScript de YouTube (obligatorio desde yt-dlp 2025.11): sin él, y
+# sin un runtime como Deno, YouTube devuelve menos formatos o 403.
+ENGINE_PACKAGES = ("yt_dlp", "yt_dlp_ejs")
 
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
 
 
 # ─── Verificación real ──────────────────────────────────────────────────────────
 
-def verify_executable(path: str, timeout: float = 10.0) -> bool:
+def verify_executable(path: str, timeout: float = 10.0, flag: str = "-version") -> bool:
     """
     Comprueba que el binario existe Y arranca de verdad.
 
@@ -46,7 +54,7 @@ def verify_executable(path: str, timeout: float = 10.0) -> bool:
         return False
     try:
         res = subprocess.run(
-            [path, "-version"],
+            [path, flag],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             timeout=timeout,
@@ -57,7 +65,7 @@ def verify_executable(path: str, timeout: float = 10.0) -> bool:
         return False
 
 
-def resolve_tool(name: str) -> Optional[str]:
+def resolve_tool(name: str, flag: str = "-version") -> Optional[str]:
     """
     Busca una herramienta (ffmpeg / ffprobe) en orden de preferencia:
       1. bin/ junto al ejecutable   -> lo que deja el instalador
@@ -77,7 +85,7 @@ def resolve_tool(name: str) -> Optional[str]:
         candidates.append(from_path)
 
     for candidate in candidates:
-        if verify_executable(candidate):
+        if verify_executable(candidate, flag=flag):
             return candidate
     return None
 
@@ -143,6 +151,26 @@ def download_to_file(
                     progress_callback(message, pct)
     os.replace(tmp_path, dest_path)
     return dest_path
+
+
+def check_sha256(data: bytes, expected: str, what: str):
+    """Lanza RuntimeError si el contenido no coincide con el hash publicado."""
+    import hashlib
+    if hashlib.sha256(data).hexdigest().lower() != expected.strip().lower():
+        raise RuntimeError(f"{what}: la descarga no coincide con su hash publicado")
+
+
+def pypi_wheel(package: str, version: Optional[str] = None) -> Tuple[str, str, str, list]:
+    """(versión, url del wheel py3-none-any, sha256, requires_dist) desde PyPI."""
+    path = f"{package}/{version}" if version else package
+    response = requests.get(PYPI_JSON.format(package=path), timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    for entry in data["urls"]:
+        if entry.get("packagetype") == "bdist_wheel" and entry["filename"].endswith("-py3-none-any.whl"):
+            return (data["info"]["version"], entry["url"],
+                    entry["digests"]["sha256"], data["info"].get("requires_dist") or [])
+    raise RuntimeError(f"PyPI no devolvió un wheel utilizable de {package}")
 
 
 # ─── FFmpeg ─────────────────────────────────────────────────────────────────────
@@ -269,30 +297,35 @@ class EngineManager:
 
     def installed_version(self) -> Optional[str]:
         """Versión instalada, o None si el motor no está o está incompleto."""
-        if not os.path.isdir(os.path.join(self.engine_dir, "yt_dlp")):
+        # Un motor sin yt_dlp_ejs (instalaciones anteriores a 3.2) cuenta como
+        # incompleto: así la app lo repara sola al arrancar.
+        if not all(os.path.isdir(os.path.join(self.engine_dir, p)) for p in ENGINE_PACKAGES):
             return None
         return self._read_stamp().get("version")
 
     def is_installed(self) -> bool:
         return self.installed_version() is not None
 
-    def latest_release(self) -> Tuple[str, str]:
+    def latest_release(self) -> Tuple[str, list]:
         """
-        Consulta PyPI y devuelve (versión, url_del_wheel).
+        Consulta PyPI y devuelve (versión de yt-dlp, [(url, sha256), ...]).
 
-        Se usa PyPI y no los releases de GitHub porque el wheel es un zip que se
-        extrae tal cual y da el paquete yt_dlp/ ya listo para importar.
+        La lista trae el wheel de yt-dlp y el de yt-dlp-ejs en la versión
+        EXACTA que esa versión de yt-dlp fija en sus dependencias (si no
+        coinciden, yt-dlp ignora los scripts). Se usa PyPI porque el wheel es
+        un zip que se extrae tal cual y publica su sha256 para verificarlo.
         """
-        response = requests.get(PYPI_YTDLP_JSON, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        version = data["info"]["version"]
-        for entry in data["urls"]:
-            if entry.get("packagetype") == "bdist_wheel" and entry["filename"].endswith(
-                "-py3-none-any.whl"
-            ):
-                return version, entry["url"]
-        raise RuntimeError("PyPI no devolvió un wheel utilizable de yt-dlp")
+        version, url, sha, requires = pypi_wheel("yt-dlp")
+        wheels = [(url, sha)]
+        ejs_version = None
+        for req in requires:
+            match = re.match(r"yt-dlp-ejs\s*==\s*([\w.]+)", req)
+            if match:
+                ejs_version = match.group(1)
+                break
+        _, ejs_url, ejs_sha, _ = pypi_wheel("yt-dlp-ejs", ejs_version)
+        wheels.append((ejs_url, ejs_sha))
+        return version, wheels
 
     def _verify_importable(self) -> bool:
         """
@@ -325,54 +358,56 @@ class EngineManager:
     def install(
         self,
         version: str,
-        wheel_url: str,
+        wheels: list,
         start_pct: float = 0.0,
         end_pct: float = 100.0,
     ) -> bool:
-        """Descarga el wheel y reemplaza el motor. Devuelve True si quedó usable."""
+        """Descarga los wheels, verifica su sha256 y reemplaza el motor."""
         message = f"Descargando motor de descarga (yt-dlp {version})..."
         self._report(message, start_pct)
-        buffer = download_to_buffer(
-            wheel_url,
-            self.progress_callback,
-            message,
-            start_pct,
-            start_pct + (end_pct - start_pct) * 0.85,
-        )
+        staging = os.path.join(self.engine_dir, ".staging")
+        shutil.rmtree(staging, ignore_errors=True)
+        os.makedirs(staging, exist_ok=True)
+        span = (end_pct - start_pct) * 0.85 / len(wheels)
+        for i, (url, sha) in enumerate(wheels):
+            buffer = download_to_buffer(
+                url, self.progress_callback, message,
+                start_pct + i * span, start_pct + (i + 1) * span,
+            )
+            # Antes el wheel se instalaba sin comprobar nada. PyPI publica el
+            # sha256 de cada archivo: un wheel corrupto o manipulado no pasa.
+            check_sha256(buffer.getvalue(), sha, "Motor de descarga")
+            with zipfile.ZipFile(buffer) as archive:
+                archive.extractall(staging)
 
         self._report(
             "Instalando motor de descarga...", start_pct + (end_pct - start_pct) * 0.9
         )
-        staging = os.path.join(self.engine_dir, ".staging")
-        shutil.rmtree(staging, ignore_errors=True)
-        os.makedirs(staging, exist_ok=True)
-        with zipfile.ZipFile(buffer) as archive:
-            archive.extractall(staging)
-
-        staged_pkg = os.path.join(staging, "yt_dlp")
-        if not os.path.isdir(staged_pkg):
+        if not all(os.path.isdir(os.path.join(staging, p)) for p in ENGINE_PACKAGES):
             shutil.rmtree(staging, ignore_errors=True)
             self._report("El motor descargado no es válido", -1)
             return False
 
         # Reemplazo en dos pasos: el motor viejo solo se borra cuando el nuevo
         # ya está extraído entero, así un fallo a mitad no deja la app sin motor.
-        final_pkg = os.path.join(self.engine_dir, "yt_dlp")
-        old_pkg = final_pkg + ".old"
-        shutil.rmtree(old_pkg, ignore_errors=True)
-        had_previous = os.path.isdir(final_pkg)
-        if had_previous:
-            os.replace(final_pkg, old_pkg)
-        os.replace(staged_pkg, final_pkg)
+        had_previous = os.path.isdir(os.path.join(self.engine_dir, "yt_dlp"))
+        for pkg in ENGINE_PACKAGES:
+            final_pkg = os.path.join(self.engine_dir, pkg)
+            shutil.rmtree(final_pkg + ".old", ignore_errors=True)
+            if os.path.isdir(final_pkg):
+                os.replace(final_pkg, final_pkg + ".old")
+            os.replace(os.path.join(staging, pkg), final_pkg)
 
         # Verificación real: el swap puede haber dejado un paquete que no
         # arranca en este intérprete (típicamente porque yt-dlp ya dejó de
         # soportar esta versión de Python). Si es así, se deshace en vez de
         # dejar la app sin motor funcional hasta el próximo reinicio.
         if not self._verify_importable():
-            shutil.rmtree(final_pkg, ignore_errors=True)
-            if had_previous:
-                os.replace(old_pkg, final_pkg)
+            for pkg in ENGINE_PACKAGES:
+                final_pkg = os.path.join(self.engine_dir, pkg)
+                shutil.rmtree(final_pkg, ignore_errors=True)
+                if os.path.isdir(final_pkg + ".old"):
+                    os.replace(final_pkg + ".old", final_pkg)
             shutil.rmtree(staging, ignore_errors=True)
             stamp = self._read_stamp()
             stamp["last_check"] = time.time()
@@ -385,7 +420,8 @@ class EngineManager:
             )
             return had_previous
 
-        shutil.rmtree(old_pkg, ignore_errors=True)
+        for pkg in ENGINE_PACKAGES:
+            shutil.rmtree(os.path.join(self.engine_dir, pkg) + ".old", ignore_errors=True)
         shutil.rmtree(staging, ignore_errors=True)
 
         stamp = self._read_stamp()
@@ -403,8 +439,8 @@ class EngineManager:
             self._report("Motor de descarga listo", end_pct)
             return True
         try:
-            version, url = self.latest_release()
-            return self.install(version, url, start_pct, end_pct)
+            version, wheels = self.latest_release()
+            return self.install(version, wheels, start_pct, end_pct)
         except Exception as exc:
             self._report(f"No se pudo instalar el motor de descarga: {exc}", -1)
             return False
@@ -422,7 +458,7 @@ class EngineManager:
             return None
 
         try:
-            version, url = self.latest_release()
+            version, wheels = self.latest_release()
         except Exception:
             return None
 
@@ -442,7 +478,59 @@ class EngineManager:
         if version == stamp.get("blocked_version"):
             return None
 
-        return version if self.install(version, url) else None
+        return version if self.install(version, wheels) else None
+
+
+class DenoManager:
+    """
+    Runtime de JavaScript que yt-dlp necesita para YouTube (yt-dlp >= 2025.11).
+
+    Mismo contrato que FFmpegManager: se busca en bin/ junto al exe, en
+    AppData y en el PATH, y solo vale si `deno --version` responde.
+    """
+
+    def __init__(self, progress_callback: Optional[ProgressCallback] = None):
+        self.progress_callback = progress_callback
+        self._path = None
+        self._resolved = False
+
+    @property
+    def path(self) -> Optional[str]:
+        if not self._resolved:
+            self._path = resolve_tool("deno", flag="--version")
+            self._resolved = True
+        return self._path
+
+    def is_ready(self) -> bool:
+        return self.path is not None
+
+    def refresh(self):
+        self._resolved = False
+
+    def ensure(self, start_pct: float = 0.0, end_pct: float = 100.0) -> bool:
+        if self.is_ready():
+            return True
+        report = self.progress_callback or (lambda *_: None)
+        release = requests.get(DENO_RELEASE_API, timeout=10).json()
+        assets = {a["name"]: a["browser_download_url"] for a in release.get("assets", [])}
+        # El .sha256sum de Deno viene en formato Get-FileHash ("Hash : A0C3...")
+        checksum = requests.get(assets[DENO_ASSET + ".sha256sum"], timeout=10).text
+        expected = re.search(r"\b[0-9a-fA-F]{64}\b", checksum).group(0)
+        buffer = download_to_buffer(
+            assets[DENO_ASSET], self.progress_callback,
+            "Descargando Deno (necesario para YouTube)...",
+            start_pct, start_pct + (end_pct - start_pct) * 0.9, timeout=60.0,
+        )
+        check_sha256(buffer.getvalue(), expected, "Deno")
+        target = os.path.join(get_bin_dir(), "deno.exe")
+        with zipfile.ZipFile(buffer) as archive, archive.open("deno.exe") as src, \
+                open(target + ".part", "wb") as out:
+            shutil.copyfileobj(src, out)
+        os.replace(target + ".part", target)
+        self.refresh()
+        ok = self.is_ready()
+        report("Deno listo" if ok else "Deno no se pudo instalar", end_pct if ok else -1)
+        return ok
 
 
 def activate_engine() -> bool:
