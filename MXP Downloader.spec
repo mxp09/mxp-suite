@@ -39,6 +39,11 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 # congelado (funcionando bien al correr desde el código fuente).
 tmp_ret = collect_all('pillow_heif')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# Exportadores de transcripción: python-docx necesita su plantilla .docx
+# (datos, no código) y fpdf2 sus módulos de fuentes; collect_all los arrastra.
+for pkg in ('docx', 'fpdf'):
+    tmp_ret = collect_all(pkg)
+    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 a = Analysis(
     ['MXPDOWNLOADER.pyw'],

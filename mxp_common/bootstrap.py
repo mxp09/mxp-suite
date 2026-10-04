@@ -109,7 +109,8 @@ def install_engine_from_wheel(wheel_path: str) -> bool:
     return True
 
 
-def run_setup(ffmpeg_zip=None, ytdlp_wheel=None, need_engine=True) -> int:
+def run_setup(ffmpeg_zip=None, ytdlp_wheel=None, need_engine=True,
+              whisper_zip=None, whisper_models=None) -> int:
     """
     Deja las dependencias listas y verificadas.
 
@@ -176,8 +177,59 @@ def run_setup(ffmpeg_zip=None, ytdlp_wheel=None, need_engine=True) -> int:
             _log("ERROR: Deno no quedó utilizable.")
             ok = False
 
+    # ── Transcripción: motor whisper.cpp + modelos elegidos en el instalador ──
+    ok = setup_transcription(whisper_zip, whisper_models or []) and ok
+
     _log("LISTO" if ok else "INCOMPLETO")
     return 0 if ok else 1
+
+
+def setup_transcription(whisper_zip, whisper_models) -> bool:
+    """
+    `whisper_models` son pares "clave=ruta" de lo que bajó el instalador. Si un
+    archivo falta o no cuadra su hash, se descarga aquí: el instalador no
+    termina en verde sin el motor y TODOS los modelos pedidos funcionando.
+    """
+    from mxp_common import transcriber
+
+    ok = True
+    if not transcriber.whisper_cli():
+        try:
+            if whisper_zip and os.path.isfile(whisper_zip):
+                _log("Instalando el motor de transcripción...")
+                with open(whisper_zip, "rb") as f:
+                    transcriber.install_engine_from_zip(f.read())
+            if not transcriber.whisper_cli():
+                _log("Descargando el motor de transcripción...")
+                transcriber.ensure_engine()
+        except Exception as exc:
+            _log(f"ERROR instalando el motor de transcripción: {exc}")
+    if transcriber.whisper_cli():
+        _log("Motor de transcripción verificado.")
+    else:
+        _log("ERROR: el motor de transcripción no quedó utilizable.")
+        ok = False
+
+    for pair in whisper_models:
+        key, _, path = pair.partition("=")
+        if key not in transcriber.MODELS:
+            _log(f"Modelo desconocido ignorado: {key}")
+            continue
+        if key in transcriber.installed_models():
+            _log(f"Modelo {key} ya instalado.")
+            continue
+        try:
+            if path and os.path.isfile(path) and transcriber.install_model_file(key, path):
+                _log(f"Modelo {key} instalado y verificado.")
+                continue
+            _log(f"Descargando el modelo {key}...")
+            transcriber.download_model(key)
+        except Exception as exc:
+            _log(f"ERROR con el modelo {key}: {exc}")
+        if key not in transcriber.installed_models():
+            _log(f"ERROR: el modelo {key} no quedó instalado.")
+            ok = False
+    return ok
 
 
 def maybe_run_from_argv(need_engine=True):
@@ -201,4 +253,6 @@ def maybe_run_from_argv(need_engine=True):
         ffmpeg_zip=arg("--ffmpeg-zip"),
         ytdlp_wheel=arg("--ytdlp-wheel"),
         need_engine=need_engine,
+        whisper_zip=arg("--whisper-zip"),
+        whisper_models=[sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == "--whisper-model"],
     ))
