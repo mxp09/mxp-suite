@@ -11,7 +11,7 @@ No dupliques el número en ningún otro sitio.
 # mxp-suite es v3.0.1 (MXP_Suite_Pro_v3.0.1.zip, 17 descargas). Ponerle 1.1.0
 # habría hecho que el updater viera 3.0.1 como "más nueva" y ofreciera a todo
 # el mundo volver justo a la versión con el bug del 403.
-__version__ = "3.1.0"
+__version__ = "3.2.0"
 
 # Identidad de la app
 APP_ID = "MXP_Downloader"          # nombre de la carpeta en %APPDATA%

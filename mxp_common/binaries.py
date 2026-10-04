@@ -30,7 +30,8 @@ FFMPEG_ZIP_URL = (
     "ffmpeg-master-latest-win64-gpl.zip"
 )
 PYPI_JSON = "https://pypi.org/pypi/{package}/json"
-DENO_RELEASE_API = "https://api.github.com/repos/denoland/deno/releases/latest"
+# URL directa de "latest", sin la API de GitHub (limitada a 60 peticiones/h por IP).
+DENO_LATEST = "https://github.com/denoland/deno/releases/latest/download/"
 DENO_ASSET = "deno-x86_64-pc-windows-msvc.zip"
 
 # Paquetes que forman el motor. yt_dlp_ejs trae los scripts que resuelven los
@@ -519,13 +520,11 @@ class DenoManager:
         if self.is_ready():
             return True
         report = self.progress_callback or (lambda *_: None)
-        release = requests.get(DENO_RELEASE_API, timeout=10).json()
-        assets = {a["name"]: a["browser_download_url"] for a in release.get("assets", [])}
         # El .sha256sum de Deno viene en formato Get-FileHash ("Hash : A0C3...")
-        checksum = requests.get(assets[DENO_ASSET + ".sha256sum"], timeout=10).text
+        checksum = requests.get(DENO_LATEST + DENO_ASSET + ".sha256sum", timeout=15).text
         expected = re.search(r"\b[0-9a-fA-F]{64}\b", checksum).group(0)
         buffer = download_to_buffer(
-            assets[DENO_ASSET], self.progress_callback,
+            DENO_LATEST + DENO_ASSET, self.progress_callback,
             "Descargando Deno (necesario para YouTube)...",
             start_pct, start_pct + (end_pct - start_pct) * 0.9, timeout=60.0,
         )

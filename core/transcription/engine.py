@@ -100,7 +100,9 @@ def transcribe(source: str, model_key: str, language: str = "auto", translate: b
     if not os.path.isfile(model):
         raise RuntimeError("Ese modelo no está descargado.")
 
-    with tempfile.TemporaryDirectory(prefix="mxp_tr_") as workdir:
+    # ignore_cleanup_errors: en Windows un proceso recién terminado puede
+    # retener el WAV un instante y el borrado no debe tapar el error real.
+    with tempfile.TemporaryDirectory(prefix="mxp_tr_", ignore_cleanup_errors=True) as workdir:
         title = os.path.basename(source)
         audio_path = "" if re.match(r"https?://", source) else os.path.abspath(source)
         if re.match(r"https?://", source):
@@ -124,6 +126,7 @@ def transcribe(source: str, model_key: str, language: str = "auto", translate: b
         for line in proc.stderr:
             if cancel.is_set():
                 proc.kill()
+                proc.wait()   # que suelte el WAV antes de borrar la carpeta temporal
                 raise Cancelled()
             tail = (tail + [line.strip()])[-5:]
             match = _PROGRESS_RE.search(line)

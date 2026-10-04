@@ -3,7 +3,7 @@ Piezas del diseño "Studio" (v3.2): barra lateral, cabecera de página, chips
 y tarjetas seleccionables. Todo con la paleta de siempre (negro + amarillo).
 """
 
-from typing import Callable, Optional
+from typing import Callable
 
 import customtkinter as ctk
 

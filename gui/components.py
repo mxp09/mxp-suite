@@ -13,10 +13,8 @@ from typing import Callable, Optional
 import customtkinter as ctk
 
 from gui.theme import Colors, Fonts, Spacing, Radius, Window, PLATFORM_COLORS
-from core.utils import detect_platform, get_platform_icon, validate_url, get_default_download_dir, get_resource_path
-from mxp_common.version import __version__
+from core.utils import detect_platform, get_platform_icon, get_default_download_dir
 from gui.icons import icon
-from PIL import Image
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
