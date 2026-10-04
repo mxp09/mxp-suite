@@ -1,0 +1,2 @@
+Iconos: Tabler Icons 3.36 (https://tabler.io/icons), licencia MIT.
+Renderizados a 48x48 en blanco; gui/icons.py los tiñe en tiempo de ejecucion.

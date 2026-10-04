@@ -13,7 +13,6 @@ import customtkinter as ctk
 
 from gui.theme import Colors, Fonts, Spacing, Window, Radius
 from gui.components import (
-    HeaderFrame,
     URLInputFrame,
     QualitySelector,
     TrimmingFrame,
@@ -21,13 +20,15 @@ from gui.components import (
     CookieSettingsFrame,
     DownloadButton,
     ProgressPanel,
-    FooterFrame,
     SetupProgressOverlay,
-    HistoryWindow,
+    HistoryPage,
     ThumbnailPreviewFrame,
     ConverterPanelFrame,
     CompressorPanelFrame,
 )
+from gui.studio import Chip, EmptyState, PageHeader, Sidebar
+from core import settings as user_settings
+from mxp_common.version import __version__
 from core.downloader import VideoDownloader, Quality, VideoResolution, DownloadStatus, ProgressData
 from core.utils import validate_url, show_windows_notification
 from core.binaries import BinaryManager
@@ -47,7 +48,7 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
         except Exception:
             pass
             
-        self.title("MXP Suite")
+        self.title(f"MXP Suite — v{__version__}")
         self.configure(fg_color=Colors.BG_DARK)
 
         # Intentar cargar icono
@@ -70,7 +71,6 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
         self.downloader = VideoDownloader()
         self._progress_queue: queue.Queue = queue.Queue()
         self._download_queue: list[dict] = []  # Cola de trabajos pendientes (cada uno con su job_id)
-        self._history_window = None
         self._metadata_queue: queue.Queue[dict] = queue.Queue()
         self._current_metadata_url = ""
         self._metadata_timer = None          # id del debounce de metadatos
@@ -122,157 +122,192 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
         except Exception:
             pass  # el updater nunca puede impedir que la app arranque
 
+    # Páginas de la barra lateral: (clave, texto, icono, badge)
+    NAV_ITEMS = [
+        ("downloader", "Descargar", "download", ""),
+        ("transcriber", "Transcribir", "file-text", "Nuevo"),
+        ("converter", "Convertir", "refresh", ""),
+        ("compressor", "Comprimir", "arrows-minimize", ""),
+        ("history", "Historial", "history", ""),
+    ]
+
     def _build_ui(self):
-        """Construye toda la interfaz gráfica con Sidebar."""
-        
-        # ── SETUP PROGRESS (SUPERIOR) ──
+        """Diseño Studio: barra lateral | página activa | cola persistente."""
         self.setup_overlay = SetupProgressOverlay(self)
         self.setup_overlay.pack(fill="x", side="top")
 
-        # ── SIDEBAR ──
-        self.sidebar = ctk.CTkFrame(self, width=70, fg_color=Colors.BG_SECONDARY, corner_radius=0)
-        self.sidebar.pack(side="left", fill="y")
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True)
+        body.grid_columnconfigure(1, weight=1)
+        body.grid_rowconfigure(0, weight=1)
 
-        # Separador vertical fino de 1px estilo electron
-        self.sidebar_sep = ctk.CTkFrame(self, width=1, fg_color=Colors.BORDER, corner_radius=0)
-        self.sidebar_sep.pack(side="left", fill="y")
+        self.sidebar = Sidebar(body, self.NAV_ITEMS, self._switch_page,
+                               footer=f"v{__version__}\nLocal y gratis")
+        self.sidebar.grid(row=0, column=0, sticky="ns")
 
-        # Logo de la Sidebar
-        self.sidebar_logo = ctk.CTkLabel(
-            self.sidebar,
-            text="MXP",
-            font=(Fonts.FAMILY, 16, "bold"),
-            text_color=Colors.ACCENT_YELLOW
+        self.page_host = ctk.CTkFrame(body, fg_color="transparent")
+        self.page_host.grid(row=0, column=1, sticky="nsew")
+
+        # ── Cola (columna derecha, visible en todas las páginas) ──
+        queue = ctk.CTkFrame(body, width=Window.QUEUE_WIDTH, fg_color=Colors.BG_SIDEBAR, corner_radius=0)
+        queue.grid(row=0, column=2, sticky="ns")
+        queue.pack_propagate(False)
+        ctk.CTkLabel(queue, text="Cola", anchor="w", text_color=Colors.TEXT_PRIMARY,
+                     font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold")).pack(fill="x", padx=Spacing.LG,
+                                                                        pady=(Spacing.XL, Spacing.SM))
+        queue_scroll = ctk.CTkScrollableFrame(queue, fg_color="transparent",
+                                              scrollbar_button_color=Colors.BG_TERTIARY,
+                                              scrollbar_button_hover_color=Colors.BORDER_LIGHT)
+        queue_scroll.pack(fill="both", expand=True, padx=(Spacing.SM, 0))
+        self.queue_empty = EmptyState(queue_scroll, "list", "Nada en cola",
+                                      "Las descargas y transcripciones aparecerán aquí.")
+        self.queue_empty.pack(fill="x")
+        self.progress_panel = ProgressPanel(
+            queue_scroll, cancel_callback=self._cancel_single_download,
+            on_visibility=lambda visible: (self.queue_empty.pack_forget() if visible
+                                           else self.queue_empty.pack(fill="x")),
         )
-        self.sidebar_logo.pack(pady=(Spacing.XL, Spacing.SM))
-        
-        # Botón Descargador
-        self.btn_nav_down = ctk.CTkButton(
-            self.sidebar,
-            text="📥",
-            font=(Fonts.FAMILY, 20),
-            fg_color=Colors.BG_TERTIARY,
-            hover_color=Colors.BG_HOVER,
-            text_color=Colors.ACCENT_YELLOW,
-            corner_radius=Radius.MD,
-            width=48,
-            height=48,
-            command=lambda: self._switch_page("downloader")
-        )
-        self.btn_nav_down.pack(pady=Spacing.SM)
-
-        # Botón Conversor
-        self.btn_nav_conv = ctk.CTkButton(
-            self.sidebar,
-            text="🔄",
-            font=(Fonts.FAMILY, 20),
-            fg_color="transparent",
-            hover_color=Colors.BG_HOVER,
-            text_color=Colors.TEXT_PRIMARY,
-            corner_radius=Radius.MD,
-            width=48,
-            height=48,
-            command=lambda: self._switch_page("converter")
-        )
-        self.btn_nav_conv.pack(pady=Spacing.SM)
-
-        # Botón Compresor
-        self.btn_nav_comp = ctk.CTkButton(
-            self.sidebar,
-            text="🗜",
-            font=(Fonts.FAMILY, 20),
-            fg_color="transparent",
-            hover_color=Colors.BG_HOVER,
-            text_color=Colors.TEXT_PRIMARY,
-            corner_radius=Radius.MD,
-            width=48,
-            height=48,
-            command=lambda: self._switch_page("compressor")
-        )
-        self.btn_nav_comp.pack(pady=Spacing.SM)
-
-        # Botón Historial
-        self.history_btn = ctk.CTkButton(
-            self.sidebar,
-            text="📜",
-            font=(Fonts.FAMILY, 20),
-            fg_color="transparent",
-            hover_color=Colors.BG_HOVER,
-            text_color=Colors.TEXT_PRIMARY,
-            corner_radius=Radius.MD,
-            width=48,
-            height=48,
-            command=self._show_history
-        )
-        self.history_btn.pack(pady=Spacing.SM)
-
-        # ── MAIN CONTENT (SCROLLABLE) ──
-        self.main_container = ctk.CTkScrollableFrame(
-            self,
-            fg_color="transparent",
-            scrollbar_button_color=Colors.BG_TERTIARY,
-            scrollbar_button_hover_color=Colors.BORDER_LIGHT,
-        )
-        self.main_container.pack(side="right", fill="both", expand=True)
-
-        # Componentes
-        self.header = HeaderFrame(self.main_container)
-        self.header.pack(fill="x")
-
-        self.url_input = URLInputFrame(self.main_container, on_url_change=self._on_url_change)
-        self.url_input.pack(fill="x")
-
-        self.thumbnail_preview = ThumbnailPreviewFrame(self.main_container)
-        self.thumbnail_preview.pack(fill="x")
-
-        options_frame = ctk.CTkFrame(self.main_container, fg_color="transparent")
-        options_frame.pack(fill="x")
-
-        left_col = ctk.CTkFrame(options_frame, fg_color="transparent")
-        left_col.pack(side="left", fill="both", expand=True)
-        self.quality_selector = QualitySelector(left_col)
-        self.quality_selector.pack(fill="x")
-
-        right_col = ctk.CTkFrame(options_frame, fg_color="transparent")
-        right_col.pack(side="right", fill="both", expand=True)
-        self.output_folder = OutputFolderFrame(right_col)
-        self.output_folder.pack(fill="x")
-
-        # TRIMMING (Nueva sección superior a cookies)
-        self.trimming_settings = TrimmingFrame(self.main_container)
-        self.trimming_settings.pack(fill="x")
-
-        self.cookies_settings = CookieSettingsFrame(self.main_container)
-        self.cookies_settings.pack(fill="x")
-
-        self.download_btn = DownloadButton(self.main_container, command=self._add_to_queue, cancel_command=self._cancel_download)
-        self.download_btn.pack(fill="x")
-
-        self.progress_panel = ProgressPanel(self.main_container, cancel_callback=self._cancel_single_download)
         self.progress_panel.pack(fill="x")
 
-        self.footer = FooterFrame(self.main_container)
-        self.footer.pack(fill="x")
+        # ── Páginas ──
+        self.pages = {}
+        self._build_downloader_page(self._new_page("downloader"))
+        self.converter_panel = ConverterPanelFrame(self._new_page("converter"))
+        self.converter_panel.pack(fill="both", expand=True, pady=(Spacing.XL, 0))
+        self.compressor_panel = CompressorPanelFrame(self._new_page("compressor"))
+        self.compressor_panel.pack(fill="both", expand=True, pady=(Spacing.XL, 0))
+        self.history_page = HistoryPage(self._new_page("history"), on_redownload=self._redownload)
+        self.history_page.pack(fill="both", expand=True, padx=Spacing.LG, pady=(Spacing.XL, 0))
+        self._build_transcriber_page(self._new_page("transcriber"))
 
-        # ── CONVERTER CONTENT (SCROLLABLE - OCULTO POR DEFECTO) ──
-        self.converter_container = ctk.CTkScrollableFrame(
-            self,
-            fg_color="transparent",
-            scrollbar_button_color=Colors.BG_TERTIARY,
-            scrollbar_button_hover_color=Colors.BORDER_LIGHT,
-        )
-        self.converter_panel = ConverterPanelFrame(self.converter_container)
-        self.converter_panel.pack(fill="both", expand=True)
+        self._bind_shortcuts()
+        self._load_settings()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._switch_page("downloader")
 
-        # ── COMPRESSOR CONTENT (SCROLLABLE - OCULTO POR DEFECTO) ──
-        self.compressor_container = ctk.CTkScrollableFrame(
-            self,
-            fg_color="transparent",
-            scrollbar_button_color=Colors.BG_TERTIARY,
-            scrollbar_button_hover_color=Colors.BORDER_LIGHT,
-        )
-        self.compressor_panel = CompressorPanelFrame(self.compressor_container)
-        self.compressor_panel.pack(fill="both", expand=True)
+    def _new_page(self, name: str):
+        page = ctk.CTkScrollableFrame(self.page_host, fg_color="transparent",
+                                      scrollbar_button_color=Colors.BG_TERTIARY,
+                                      scrollbar_button_hover_color=Colors.BORDER_LIGHT)
+        self.pages[name] = page
+        return page
+
+    def _build_downloader_page(self, page):
+        pad = {"padx": Spacing.LG}
+        PageHeader(page, "Descargar", "YouTube, TikTok, Instagram, Facebook, X y más de 1.000 sitios").pack(
+            fill="x", pady=(Spacing.XL, Spacing.LG), **pad)
+
+        self.url_input = URLInputFrame(page, on_url_change=self._on_url_change)
+        self.url_input.pack(fill="x", **pad)
+        self.download_btn = DownloadButton(self.url_input.input_frame, command=self._add_to_queue,
+                                           cancel_command=self._cancel_download)
+        self.download_btn.pack(side="right", padx=(0, Spacing.SM), pady=Spacing.SM,
+                               before=self.url_input.paste_btn)
+        self.url_input.url_entry.bind("<Return>", lambda e: self._add_to_queue())
+
+        self.thumbnail_preview = ThumbnailPreviewFrame(page)
+        self.thumbnail_preview.pack(fill="x", pady=(Spacing.MD, 0))
+
+        self.quality_selector = QualitySelector(page, on_text=self._send_to_transcriber)
+        self.quality_selector.pack(fill="x", pady=(Spacing.MD, 0), **pad)
+
+        # Chips que abren los paneles secundarios (antes eran tres bloques
+        # siempre ocupando sitio). Sus botones propios de plegar se ocultan.
+        chips = ctk.CTkFrame(page, fg_color="transparent")
+        chips.pack(fill="x", pady=(Spacing.LG, Spacing.XS), **pad)
+        panels = ctk.CTkFrame(page, fg_color="transparent", height=1)
+        panels.pack(fill="x")
+
+        self.trimming_settings = TrimmingFrame(panels)
+        self.cookies_settings = CookieSettingsFrame(panels)
+        self.output_folder = OutputFolderFrame(panels)
+        for frame in (self.trimming_settings, self.cookies_settings):
+            frame.toggle_btn.pack_forget()
+            if not frame._expanded:
+                frame._toggle()  # contenido siempre dentro; lo muestra/oculta el chip
+
+        self._chip_panels = {}
+        for key, text, icon_name, frame in (
+            ("trim", "Recortar", "cut", self.trimming_settings),
+            ("cookies", "Cookies", "cookie", self.cookies_settings),
+            ("folder", "Destino", "folder", self.output_folder),
+        ):
+            chip = Chip(chips, text, icon_name, command=lambda k=key: self._toggle_chip(k))
+            chip.pack(side="left", padx=(0, Spacing.SM))
+            self._chip_panels[key] = (chip, frame)
+
+        ctk.CTkButton(
+            chips, text="Abrir carpeta", height=30, width=120, corner_radius=Radius.SM,
+            fg_color="transparent", hover_color=Colors.BG_HOVER, text_color=Colors.TEXT_SECONDARY,
+            command=lambda: os.startfile(self.output_folder.get_folder()),
+        ).pack(side="right")
+
+    def _toggle_chip(self, key: str):
+        chip, frame = self._chip_panels[key]
+        opening = not frame.winfo_ismapped()
+        for other_chip, other in self._chip_panels.values():
+            other.pack_forget()
+            other_chip.set_active(False)
+        if opening:
+            frame.pack(fill="x")
+            chip.set_active(True)
+
+    def _build_transcriber_page(self, page):
+        """Página Transcribir (gui/transcriber_page.py)."""
+        self.transcriber_page = None
+        try:
+            from gui.transcriber_page import TranscriberPage
+        except ImportError:
+            PageHeader(page, "Transcribir", "Próximamente").pack(fill="x", padx=Spacing.LG, pady=Spacing.XL)
+            return
+        self.transcriber_page = TranscriberPage(page, progress_panel=self.progress_panel)
+        self.transcriber_page.pack(fill="both", expand=True, padx=Spacing.LG, pady=(Spacing.XL, 0))
+
+    def _send_to_transcriber(self):
+        """Tarjeta "Texto": lleva el enlace actual a la página Transcribir."""
+        url = self.url_input.get_url()
+        self._switch_page("transcriber")
+        if self.transcriber_page and url:
+            self.transcriber_page.set_url(url)
+
+    def _redownload(self, url: str):
+        self._switch_page("downloader")
+        if self.url_input.batch_mode:
+            self.url_input.toggle_batch_mode(False)
+        self.url_input.url_entry.delete(0, "end")
+        self.url_input.url_entry.insert(0, url)
+        self.url_input._on_key_release(None)
+
+    def _bind_shortcuts(self):
+        for i, (key, *_rest) in enumerate(self.NAV_ITEMS, start=1):
+            self.bind(f"<Control-Key-{i}>", lambda e, k=key: self._switch_page(k))
+
+    # ── Ajustes persistentes ──
+    def _load_settings(self):
+        data = user_settings.load()
+        qs = self.quality_selector
+        if os.path.isdir(data.get("output_dir", "")):
+            self.output_folder.folder_var.set(data["output_dir"])
+        for var, key in ((qs.video_format_var, "video_format"), (qs.audio_format_var, "audio_format"),
+                         (qs.audio_bitrate_var, "audio_bitrate"), (qs.resolution_var, "resolution"),
+                         (self.cookies_settings.browser_var, "cookies_browser")):
+            if data.get(key):
+                var.set(data[key])
+        if data.get("mode") in ("best", "audio_only"):
+            qs._set_mode(data["mode"])
+
+    def _on_close(self):
+        qs = self.quality_selector
+        user_settings.save({
+            "output_dir": self.output_folder.get_folder(),
+            "mode": qs.get_mode(),
+            "video_format": qs.video_format_var.get(),
+            "audio_format": qs.audio_format_var.get(),
+            "audio_bitrate": qs.audio_bitrate_var.get(),
+            "resolution": qs.resolution_var.get(),
+            "cookies_browser": self.cookies_settings.browser_var.get(),
+        })
+        self.destroy()
 
     def _setup_binaries(self):
         """
@@ -322,50 +357,14 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
             0,
         )
 
-    def _show_history(self):
-        """Abre la ventana de historial."""
-        if self._history_window is None or not self._history_window.winfo_exists():
-            self._history_window = HistoryWindow(self)
-        else:
-            self._history_window.focus()
-
     def _switch_page(self, page_name: str):
-        if page_name == "downloader":
-            # Ocultar convertidor y compresor
-            self.converter_container.pack_forget()
-            self.compressor_container.pack_forget()
-            
-            # Mostrar descargador
-            self.main_container.pack(side="right", fill="both", expand=True)
-            
-            # Actualizar botones sidebar
-            self.btn_nav_down.configure(fg_color=Colors.BG_TERTIARY, text_color=Colors.ACCENT_YELLOW)
-            self.btn_nav_conv.configure(fg_color="transparent", text_color=Colors.TEXT_PRIMARY)
-            self.btn_nav_comp.configure(fg_color="transparent", text_color=Colors.TEXT_PRIMARY)
-        elif page_name == "converter":
-            # Ocultar descargador y compresor
-            self.main_container.pack_forget()
-            self.compressor_container.pack_forget()
-            
-            # Mostrar convertidor
-            self.converter_container.pack(side="right", fill="both", expand=True)
-            
-            # Actualizar botones sidebar
-            self.btn_nav_conv.configure(fg_color=Colors.BG_TERTIARY, text_color=Colors.ACCENT_YELLOW)
-            self.btn_nav_down.configure(fg_color="transparent", text_color=Colors.TEXT_PRIMARY)
-            self.btn_nav_comp.configure(fg_color="transparent", text_color=Colors.TEXT_PRIMARY)
-        elif page_name == "compressor":
-            # Ocultar descargador y convertidor
-            self.main_container.pack_forget()
-            self.converter_container.pack_forget()
-            
-            # Mostrar compresor
-            self.compressor_container.pack(side="right", fill="both", expand=True)
-            
-            # Actualizar botones sidebar
-            self.btn_nav_comp.configure(fg_color=Colors.BG_TERTIARY, text_color=Colors.ACCENT_YELLOW)
-            self.btn_nav_down.configure(fg_color="transparent", text_color=Colors.TEXT_PRIMARY)
-            self.btn_nav_conv.configure(fg_color="transparent", text_color=Colors.TEXT_PRIMARY)
+        for name, page in self.pages.items():
+            if name != page_name:
+                page.pack_forget()
+        self.pages[page_name].pack(fill="both", expand=True)
+        self.sidebar.set_active(page_name)
+        if page_name == "history":
+            self.history_page.refresh()
 
     def _fetch_metadata_thread(self, url: str):
         """Hilo secundario para obtener info del video."""

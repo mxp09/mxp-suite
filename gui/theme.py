@@ -53,6 +53,10 @@ class Colors:
     PROGRESS_BG = "#1A1A1A"
     PROGRESS_FILL = "#FFE600"
 
+    # Studio (v3.2)
+    ACCENT_SOFT = "#1F1C00"      # Amarillo al ~12 % sobre negro: fondos activos
+    BG_SIDEBAR = "#0A0A0A"       # Barra lateral y cola, un punto sobre el negro
+
 
 # ─── Plataforma → Color ────────────────────────────────────────────────────────
 
@@ -106,7 +110,10 @@ class Radius:
 # ─── Dimensiones de ventana ────────────────────────────────────────────────────
 
 class Window:
-    WIDTH = 900
-    HEIGHT = 680
-    MIN_WIDTH = 750
-    MIN_HEIGHT = 580
+    # Studio necesita tres columnas: barra lateral, página y cola.
+    WIDTH = 1200
+    HEIGHT = 760
+    MIN_WIDTH = 1020
+    MIN_HEIGHT = 620
+    SIDEBAR_WIDTH = 196
+    QUEUE_WIDTH = 230
