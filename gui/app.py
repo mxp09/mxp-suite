@@ -687,11 +687,16 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
         self.active_jobs.clear()
         self._download_queue.clear()
         self._job_settings.clear()
-        self.progress_panel.clear_all()
+        # Solo las tarjetas de descargas: las transcripciones siguen su curso.
+        for job_id in [j for j in self.progress_panel.items if not j.startswith("tr-")]:
+            self.progress_panel.remove_job(job_id)
         self.download_btn.set_downloading(False)
 
     def _cancel_single_download(self, job_id: str):
-        """Cancela una descarga específica por su job_id."""
+        """Cancela una descarga (o una transcripción, ids "tr-...") por su job_id."""
+        if job_id.startswith("tr-") and self.transcriber_page:
+            self.transcriber_page.cancel(job_id)
+            return
         if job_id in self.active_jobs:
             try:
                 self.active_jobs[job_id].cancel()
