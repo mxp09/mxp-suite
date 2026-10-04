@@ -13,7 +13,7 @@ from typing import Callable, Optional, Tuple
 import yt_dlp
 
 from core import errors
-from core.utils import get_default_download_dir
+from core.utils import get_default_download_dir, parse_time_str
 from mxp_common.binaries import DenoManager, FFmpegManager
 
 # Instancia única a nivel de módulo. FFmpegManager ya cachea internamente la
@@ -166,7 +166,8 @@ class VideoDownloader:
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
-            "overwrites": True,
+            # Nunca pisar un archivo existente del usuario en silencio.
+            "overwrites": False,
             "writethumbnail": embed_thumb,
 
             # ── Reintentos ──
@@ -307,60 +308,6 @@ class VideoDownloader:
 
         return hook
 
-    def _trim_video(self, input_path: str, start_time: str, end_time: str,
-                    progress_callback: Optional[ProgressCallback] = None) -> str:
-        """
-        Recorta el video usando ffmpeg de forma rápida (stream copy).
-
-        Antes esto comprobaba `os.path.exists(get_bin_dir()/ffmpeg.exe)` a
-        secas — exactamente el patrón que el resto del archivo dejó atrás en
-        favor de la instancia compartida `_ffmpeg`, que además VERIFICA que
-        el binario responde. Si ffmpeg solo está en el PATH o en la carpeta
-        del instalador, esta comprobación vieja lo daba por ausente y el
-        recorte se saltaba en silencio: el usuario recibía el vídeo completo
-        creyendo que sí se había recortado. Ahora, si no se puede recortar,
-        se avisa por el mismo canal de progreso en vez de fingir que salió bien.
-        """
-        import subprocess
-
-        ffmpeg_exe = _ffmpeg.ffmpeg
-        if not ffmpeg_exe:
-            if progress_callback:
-                progress_callback(ProgressData(
-                    status=DownloadStatus.MERGING,
-                    video_title="No se encontró FFmpeg: se entrega el video sin recortar.",
-                ))
-            return input_path
-
-        ext = os.path.splitext(input_path)[1]
-        output_path = input_path.replace(ext, f"_trimmed{ext}")
-
-        cmd = [ffmpeg_exe, "-y", "-i", input_path]
-        if start_time: cmd += ["-ss", start_time]
-        if end_time: cmd += ["-to", end_time]
-        cmd += ["-c", "copy", output_path]
-
-        try:
-            subprocess.run(cmd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            # Eliminar original si el recorte funcionó
-            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                os.remove(input_path)
-                return output_path
-        except Exception as exc:
-            if progress_callback:
-                progress_callback(ProgressData(
-                    status=DownloadStatus.MERGING,
-                    video_title=f"No se pudo recortar el video ({exc}): se entrega completo.",
-                ))
-            return input_path
-
-        if progress_callback:
-            progress_callback(ProgressData(
-                status=DownloadStatus.MERGING,
-                video_title="No se pudo recortar el video: se entrega completo.",
-            ))
-        return input_path
-
     def download(
         self,
         url: str,
@@ -399,28 +346,23 @@ class VideoDownloader:
                 cookies_file=cookies_file,
                 evasive=evasive,
             )
+            if start_time or end_time:
+                # yt-dlp descarga SOLO ese tramo y corta en el fotograma exacto.
+                # Sustituye al recorte posterior con ffmpeg, que bajaba el
+                # vídeo entero y rompía rutas con la extensión repetida.
+                start = parse_time_str(start_time) or 0
+                end = parse_time_str(end_time) if end_time else float("inf")
+                opts["download_ranges"] = yt_dlp.utils.download_range_func(None, [(start, end)])
+                opts["force_keyframes_at_cuts"] = True
 
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 title = info.get("title", "Video")
-                filepath = ydl.prepare_filename(info)
-
-                # yt-dlp puede cambiar la extensión tras el post-procesado
-                if not os.path.exists(filepath):
-                    base = os.path.basename(os.path.splitext(filepath)[0])
-                    for f in os.listdir(output_dir):
-                        if f.startswith(base):
-                            filepath = os.path.join(output_dir, f)
-                            break
-
-                # Aplicar Trimming si es necesario
-                if (start_time or end_time) and os.path.exists(filepath):
-                    if progress_callback:
-                        progress_callback(ProgressData(
-                            status=DownloadStatus.MERGING,
-                            video_title="Recortando video...",
-                        ))
-                    filepath = self._trim_video(filepath, start_time, end_time, progress_callback)
+                # Ruta final real tras el postproceso (puede cambiar la
+                # extensión). Antes se buscaba por prefijo en la carpeta y podía
+                # devolver otro archivo con un título parecido.
+                downloads = info.get("requested_downloads") or [{}]
+                filepath = downloads[0].get("filepath") or ydl.prepare_filename(info)
 
             return title, filepath
 

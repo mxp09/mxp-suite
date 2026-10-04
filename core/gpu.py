@@ -47,6 +47,12 @@ def _cpu_av1(quality: str) -> list:
     return ["-preset", "8", "-crf", quality]
 
 
+def _cpu_vp9(quality: str) -> list:
+    # libvpx-vp9 no entiende -preset; sin -b:v 0 el CRF queda capado a un
+    # bitrate por defecto bajo. row-mt + cpu-used 4 = velocidad razonable.
+    return ["-b:v", "0", "-crf", quality, "-row-mt", "1", "-deadline", "good", "-cpu-used", "4"]
+
+
 def _nvenc(quality: str) -> list:
     return ["-preset", "p4", "-rc", "vbr", "-cq", quality]
 
@@ -63,6 +69,7 @@ ENCODER_PROFILES = {
     "libx264": _cpu_h264_h265,
     "libx265": _cpu_h264_h265,
     "libsvtav1": _cpu_av1,
+    "libvpx-vp9": _cpu_vp9,
     "h264_nvenc": _nvenc, "hevc_nvenc": _nvenc, "av1_nvenc": _nvenc,
     "h264_qsv": _qsv, "hevc_qsv": _qsv, "av1_qsv": _qsv,
     "h264_amf": _amf, "hevc_amf": _amf, "av1_amf": _amf,

@@ -762,11 +762,9 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
                     f"Se ha descargado correctamente: {data.video_title or 'tu archivo multimedia'}."
                 )
             elif status == DownloadStatus.ERROR:
+                # Sin notificación por cada fallo: en un lote de 30 eran 30
+                # globos. El resumen de la tanda avisa una sola vez.
                 self.progress_panel.update_progress(job_id, status=f"Error: {data.error_message}", percent=0.0)
-                show_windows_notification(
-                    "Error de Descarga ❌",
-                    f"No se pudo completar la descarga. Error: {data.error_message[:80]}"
-                )
                 # Guardar los ajustes con los que se intentó, para poder
                 # reintentar solo este enlace sin repetir los que sí funcionaron.
                 info = self._job_settings.get(job_id)
@@ -804,5 +802,9 @@ class App(ctk.CTk, tkdnd.DnDWrapper):
 
         self.progress_panel.set_status(
             f"{failed} descarga(s) no se completaron. Puedes reintentarlas."
+        )
+        show_windows_notification(
+            "Descargas con errores ❌",
+            f"{failed} descarga(s) no se completaron. Abre MXP para reintentarlas.",
         )
         self.progress_panel.set_retry_action(self._retry_failed)

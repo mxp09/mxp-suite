@@ -3,6 +3,7 @@ Componentes reutilizables de la GUI.
 Cada clase es un frame/widget autocontenido de CustomTkinter.
 """
 
+import logging
 import os
 import re
 import tkinter as tk
@@ -1524,7 +1525,8 @@ class HistoryWindow(ctk.CTkToplevel):
         self.title("Historial de Descargas — MXP")
         self.geometry("600x480")
         self.configure(fg_color=Colors.BG_DARK)
-        self.attributes("-topmost", True)
+        # Delante de la principal, pero sin -topmost (tapaba otras apps).
+        self.transient(self.master)
 
         # Centrar la ventana de historial
         self.update_idletasks()
@@ -1602,7 +1604,7 @@ class HistoryWindow(ctk.CTkToplevel):
             title = entry.get("title", "Sin título")
             ctk.CTkLabel(content, text=title[:60] + "..." if len(title) > 60 else title, font=(Fonts.FAMILY, Fonts.SIZE_BODY, "bold"), text_color=Colors.TEXT_PRIMARY, anchor="w").pack(fill="x")
             
-            meta = f"{entry.get('date')}  │  {entry.get('format')}  │  {entry.get('url')[:30]}..."
+            meta = f"{entry.get('date', '')}  │  {entry.get('format', '')}  │  {(entry.get('url') or '')[:30]}..."
             ctk.CTkLabel(content, text=meta, font=(Fonts.FAMILY_MONO, Fonts.SIZE_TINY), text_color=Colors.TEXT_SECONDARY, anchor="w").pack(fill="x")
 
 
@@ -1790,32 +1792,24 @@ class ThumbnailPreviewFrame(ctk.CTkFrame):
         from io import BytesIO
         from PIL import Image
         
+        from PIL import ImageOps
         try:
-            # Deshabilitar advertencias de SSL
-            try:
-                import urllib3
-                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            except Exception:
-                pass
-                
-            headers = {"User-Agent": "Mozilla/5.0"}
-            response = requests.get(url, headers=headers, timeout=5, verify=False)
-            if response.status_code == 200:
-                img_data = BytesIO(response.content)
-                pil_image = Image.open(img_data)
-                
-                # Redimensionar a 180x101
-                pil_image = pil_image.resize((180, 101), Image.Resampling.LANCZOS)
-                
-                # Crear imagen CTk y guardar referencia en la instancia para evitar GC
-                self.thumbnail_image = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=(180, 101))
-                
-                self.after(0, lambda: self.image_label.configure(text="", image=self.thumbnail_image))
-            else:
-                self.after(0, lambda: self.image_label.configure(text="🎬 Miniatura no disponible", image=None))
+            # Con verificación SSL (antes verify=False permitía un MITM).
+            response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+            response.raise_for_status()
+            # contain + pad, no resize: forzar 180x101 deformaba las
+            # miniaturas verticales (TikTok, Shorts, Reels).
+            pil_image = ImageOps.pad(Image.open(BytesIO(response.content)).convert("RGB"),
+                                     (180, 101), color=(0, 0, 0))
+            self.after(0, self._apply_thumbnail, pil_image)
         except Exception as e:
-            print(f"[DEBUG] Error al descargar miniatura de URL {url}: {e}")
-            self.after(0, lambda: self.image_label.configure(text="🎬 Error al cargar miniatura", image=None))
+            logging.getLogger("MXP").info("Miniatura no disponible (%s): %s", url, e)
+            self.after(0, lambda: self.image_label.configure(text="🎬 Miniatura no disponible", image=None))
+
+    def _apply_thumbnail(self, pil_image):
+        """En el hilo de Tk: CTkImage es un objeto Tk y no se crea desde hilos."""
+        self.thumbnail_image = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=(180, 101))
+        self.image_label.configure(text="", image=self.thumbnail_image)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -231,6 +231,14 @@ class FFmpegManager:
             timeout=60.0,
         )
 
+        # BtbN publica checksums.sha256 en el mismo release ("hash  archivo").
+        sums = requests.get(FFMPEG_ZIP_URL.rsplit("/", 1)[0] + "/checksums.sha256", timeout=15).text
+        expected = next((ln.split()[0] for ln in sums.splitlines()
+                         if ln.strip().endswith(FFMPEG_ZIP_URL.rsplit("/", 1)[1])), None)
+        if not expected:
+            raise RuntimeError("FFmpeg: no se encontró el hash publicado")
+        check_sha256(buffer.getvalue(), expected, "FFmpeg")
+
         self._report("Extrayendo FFmpeg...", start_pct + (end_pct - start_pct) * 0.9)
         bin_dir = get_bin_dir()
         wanted = {f"{t}.exe" for t in self.TOOLS}

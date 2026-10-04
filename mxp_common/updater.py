@@ -278,20 +278,21 @@ class UpdateChecker:
             timeout=60.0,
         )
 
+        # Falla en cerrado: sin SHA256SUMS.txt (o sin la línea del instalador)
+        # no se ejecuta nada. Antes, si faltaba, se instalaba sin verificar.
         expected = self._expected_checksum(info)
-        if expected:
-            if progress_callback:
-                progress_callback("Verificando la descarga...", 97.0)
-            digest = hashlib.sha256()
-            with open(dest, "rb") as f:
-                for block in iter(lambda: f.read(1024 * 1024), b""):
-                    digest.update(block)
-            if digest.hexdigest().lower() != expected:
-                os.remove(dest)
-                raise RuntimeError(
-                    "La descarga no coincide con la firma publicada y se ha "
-                    "descartado. Inténtalo de nuevo más tarde."
-                )
+        if progress_callback:
+            progress_callback("Verificando la descarga...", 97.0)
+        digest = hashlib.sha256()
+        with open(dest, "rb") as f:
+            for block in iter(lambda: f.read(1024 * 1024), b""):
+                digest.update(block)
+        if not expected or digest.hexdigest().lower() != expected:
+            os.remove(dest)
+            raise RuntimeError(
+                "No se pudo verificar la descarga con la firma publicada y se ha "
+                "descartado. Inténtalo de nuevo más tarde."
+            )
 
         if progress_callback:
             progress_callback("Descarga lista", 100.0)
