@@ -846,6 +846,7 @@ class ProgressPanel(ctk.CTkFrame):
         if self._visible:
             self.container.pack_forget()
             self.status_bar.pack_forget()
+            self.configure(height=1)   # Tk no encoge el contenedor vacío por sí solo
             self._visible = False
             self.on_visibility(False)
 
@@ -1512,6 +1513,9 @@ class ThumbnailPreviewFrame(ctk.CTkFrame):
         """Oculta el panel."""
         if self._visible:
             self.panel.pack_forget()
+            # Tk no encoge un contenedor que se queda sin hijos: sin esto quedaba
+            # un hueco negro de ~140 px donde estuvo la vista previa.
+            self.configure(height=1)
             self._visible = False
 
     def show_loading(self):

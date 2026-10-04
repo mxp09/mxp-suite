@@ -3,8 +3,8 @@ Motor de descarga basado en yt-dlp.
 Maneja la configuración, ejecución en hilo separado, y reporte de progreso.
 """
 
+import logging
 import os
-import sys
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
@@ -15,6 +15,8 @@ import yt_dlp
 from core import errors
 from core.utils import get_default_download_dir, parse_time_str
 from mxp_common.binaries import DenoManager, FFmpegManager
+
+logger = logging.getLogger("MXP")
 
 # Instancia única a nivel de módulo. FFmpegManager ya cachea internamente la
 # ruta resuelta (self._paths), pero eso no servía de nada si cada llamada
@@ -399,6 +401,9 @@ class VideoDownloader:
                     ))
 
             except Exception as e:
+                # Al log con traceback: antes el error solo salía en pantalla y no
+                # había forma de diagnosticarlo después.
+                logger.exception("Descarga fallida: %s", url)
                 if progress_callback:
                     # Mensaje accionable en vez del volcado crudo de yt-dlp
                     detail = errors.classify(e)

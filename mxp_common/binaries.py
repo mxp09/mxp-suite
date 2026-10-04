@@ -190,10 +190,28 @@ class FFmpegManager:
             self.progress_callback(message, pct)
 
     def path(self, name: str) -> Optional[str]:
-        """Ruta verificada de la herramienta, o None si no está disponible."""
-        if name not in self._paths:
-            self._paths[name] = resolve_tool(name)
-        return self._paths[name]
+        """
+        Ruta verificada de la herramienta, o None si no está disponible.
+
+        ffmpeg y ffprobe se resuelven JUNTOS, de la primera carpeta que tenga
+        los dos: yt-dlp solo recibe la ruta de ffmpeg y busca ffprobe a su
+        lado. Resolverlos por separado podía dar ffmpeg de bin/ y ffprobe de
+        AppData, y entonces MKV/MOV fallaban con "ffprobe not found".
+        """
+        if not self._paths:
+            exe = ".exe" if os.name == "nt" else ""
+            dirs = [os.path.join(get_install_dir(), "bin"), get_bin_dir()]
+            on_path = shutil.which("ffmpeg")
+            if on_path:
+                dirs.append(os.path.dirname(on_path))
+            for d in dirs:
+                pair = {t: os.path.join(d, t + exe) for t in self.TOOLS}
+                if all(verify_executable(p) for p in pair.values()):
+                    self._paths = pair
+                    break
+            else:
+                self._paths = {t: None for t in self.TOOLS}
+        return self._paths.get(name)
 
     @property
     def ffmpeg(self) -> Optional[str]:
