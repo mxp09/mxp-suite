@@ -22,3 +22,6 @@ err.txt
 
 # Empaquetados
 *.zip
+
+# Grafo de conocimiento local (graphify)
+graphify-out/
