@@ -44,6 +44,24 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 for pkg in ('docx', 'fpdf'):
     tmp_ret = collect_all(pkg)
     datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# curl_cffi: lo usa yt-dlp para hacerse pasar por Chrome (impersonación) en
+# el reintento tras un 403. Es un binario nativo que el motor externo (wheels
+# puros de PyPI) no puede traer, así que tiene que ir dentro del .exe. Sin él
+# la 3.2.0 fallaba con 'Impersonate target "chrome" is not available'.
+tmp_ret = collect_all('curl_cffi')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# Runtime de Visual C++ para whisper-cli.exe. whisper.cpp está compilado con
+# OpenMP y necesita vcomp140.dll + msvcp140.dll, que un Windows recién
+# instalado NO trae (en la 3.2.0 salía "no se encontró VCOMP140.DLL" a mitad
+# de instalación). Se copian del PC de build a _internal/vcrt y la app los
+# coloca junto a whisper-cli.exe (despliegue app-local, sin admin).
+import os as _os
+_sys32 = Path(_os.environ.get('SystemRoot', r'C:\Windows')) / 'System32'
+for _dll in ('vcomp140.dll', 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'):
+    if not (_sys32 / _dll).is_file():
+        raise SystemExit(f'Falta {_dll} en {_sys32}: instala el VC++ Redistributable x64 en el PC de build')
+    binaries.append((str(_sys32 / _dll), 'vcrt'))
 
 a = Analysis(
     ['MXPDOWNLOADER.pyw'],

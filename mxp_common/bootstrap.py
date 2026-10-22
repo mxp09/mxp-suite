@@ -110,7 +110,7 @@ def install_engine_from_wheel(wheel_path: str) -> bool:
 
 
 def run_setup(ffmpeg_zip=None, ytdlp_wheel=None, need_engine=True,
-              whisper_zip=None, whisper_models=None) -> int:
+              whisper_zip=None, whisper_models=None, result_file=None) -> int:
     """
     Deja las dependencias listas y verificadas.
 
@@ -119,6 +119,8 @@ def run_setup(ffmpeg_zip=None, ytdlp_wheel=None, need_engine=True,
     instalador falla: la app puede repetir el proceso ella sola al arrancar.
     """
     ok = True
+    # Lo que falta, en palabras que el instalador le enseña al usuario.
+    problems = []
 
     # ── FFmpeg ──
     ffmpeg = FFmpegManager()
@@ -141,6 +143,7 @@ def run_setup(ffmpeg_zip=None, ytdlp_wheel=None, need_engine=True,
             _log("FFmpeg verificado.")
         else:
             _log("ERROR: FFmpeg no quedó utilizable.")
+            problems.append("FFmpeg (conversión de video y audio)")
             ok = False
 
     # ── Motor yt-dlp ──
@@ -163,6 +166,7 @@ def run_setup(ffmpeg_zip=None, ytdlp_wheel=None, need_engine=True,
                 _log(f"Motor yt-dlp verificado ({engine.installed_version()}).")
             else:
                 _log("ERROR: el motor de descarga no quedó utilizable.")
+                problems.append("Motor de descarga (yt-dlp)")
                 ok = False
 
         # ── Deno (runtime JS que YouTube exige a yt-dlp) ──
@@ -175,16 +179,33 @@ def run_setup(ffmpeg_zip=None, ytdlp_wheel=None, need_engine=True,
             _log("Deno verificado.")
         else:
             _log("ERROR: Deno no quedó utilizable.")
+            problems.append("Deno (necesario para YouTube)")
+            ok = False
+
+        # ── Impersonación (curl_cffi): el reintento tras un 403 la necesita ──
+        try:
+            import yt_dlp.networking._curlcffi  # noqa: F401
+            _log("Impersonación de navegador verificada.")
+        except Exception as exc:
+            _log(f"ERROR: impersonación no disponible: {exc}")
+            problems.append("Impersonación de navegador (curl_cffi)")
             ok = False
 
     # ── Transcripción: motor whisper.cpp + modelos elegidos en el instalador ──
-    ok = setup_transcription(whisper_zip, whisper_models or []) and ok
+    ok = setup_transcription(whisper_zip, whisper_models or [], problems) and ok
 
     _log("LISTO" if ok else "INCOMPLETO")
+    if result_file:
+        try:
+            # utf-8-sig: Inno Setup solo decodifica bien los acentos con BOM.
+            with open(result_file, "w", encoding="utf-8-sig") as f:
+                f.write("OK\n" if ok else "\n".join(problems) + "\n")
+        except Exception:
+            _log_exception("No se pudo escribir el resultado para el instalador")
     return 0 if ok else 1
 
 
-def setup_transcription(whisper_zip, whisper_models) -> bool:
+def setup_transcription(whisper_zip, whisper_models, problems=None) -> bool:
     """
     `whisper_models` son pares "clave=ruta" de lo que bajó el instalador. Si un
     archivo falta o no cuadra su hash, se descarga aquí: el instalador no
@@ -192,6 +213,8 @@ def setup_transcription(whisper_zip, whisper_models) -> bool:
     """
     from mxp_common import transcriber
 
+    if problems is None:
+        problems = []
     ok = True
     if not transcriber.whisper_cli():
         try:
@@ -207,7 +230,9 @@ def setup_transcription(whisper_zip, whisper_models) -> bool:
     if transcriber.whisper_cli():
         _log("Motor de transcripción verificado.")
     else:
-        _log("ERROR: el motor de transcripción no quedó utilizable.")
+        reason = transcriber.diagnose_engine()
+        _log(f"ERROR: el motor de transcripción no quedó utilizable: {reason}")
+        problems.append(f"Motor de transcripción ({reason})")
         ok = False
 
     for pair in whisper_models:
@@ -228,6 +253,7 @@ def setup_transcription(whisper_zip, whisper_models) -> bool:
             _log(f"ERROR con el modelo {key}: {exc}")
         if key not in transcriber.installed_models():
             _log(f"ERROR: el modelo {key} no quedó instalado.")
+            problems.append(f"Modelo de transcripción {key}")
             ok = False
     return ok
 
@@ -255,4 +281,5 @@ def maybe_run_from_argv(need_engine=True):
         need_engine=need_engine,
         whisper_zip=arg("--whisper-zip"),
         whisper_models=[sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == "--whisper-model"],
+        result_file=arg("--result-file"),
     ))

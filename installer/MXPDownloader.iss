@@ -76,7 +76,7 @@ Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "Abrir {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "Abrir {#AppName}"; Flags: nowait postinstall skipifsilent; Check: InstallSucceeded
 
 [UninstallDelete]
 ; Se borra lo que instalamos nosotros. El historial de descargas y los ajustes
@@ -97,6 +97,8 @@ var
   ModelSizes: array[0..6] of Int64;
   ModelAllLast, ModelChanging: Boolean;
   WhisperZipPath: String;
+  DepsProblems: String;   // lo que falta, para enseñarlo al usuario
+  InstallAborted: Boolean;
 
 procedure SetModel(I: Integer; Key, FileName, Sha, Name: String; Size: Int64);
 begin
@@ -266,11 +268,28 @@ begin
   end;
 end;
 
+// Lee el resumen que deja --setup-deps: "OK" o una línea por componente que falta.
+function ReadDepsResult(Path: String): String;
+var
+  Lines: TArrayOfString;
+  I: Integer;
+begin
+  Result := '';
+  if not LoadStringsFromFile(Path, Lines) then
+  begin
+    Result := '- No se pudo comprobar la instalación (¿antivirus bloqueando la app?)';
+    exit;
+  end;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+    if (Trim(Lines[I]) <> '') and (Trim(Lines[I]) <> 'OK') then
+      Result := Result + '- ' + Trim(Lines[I]) + #13#10;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   I: Integer;
   ResultCode: Integer;
-  Params: String;
+  Params, ResultPath: String;
 begin
   // Ya con los archivos copiados, se le pide a la propia app que instale y
   // VERIFIQUE las dependencias. Se reutiliza su código en vez de reimplementar
@@ -282,7 +301,8 @@ begin
     DepsPage.SetProgress(0, 100);
     DepsPage.Show;
     try
-      Params := '--setup-deps';
+      ResultPath := ExpandConstant('{tmp}\deps_result.txt');
+      Params := '--setup-deps --result-file "' + ResultPath + '"';
       if FFmpegZipPath <> '' then
         Params := Params + ' --ffmpeg-zip "' + FFmpegZipPath + '"';
       if WhisperZipPath <> '' then
@@ -297,22 +317,51 @@ begin
       // reintento descarga solo lo que falte; lo ya verificado se salta.
       repeat
         DepsPage.SetProgress(30, 100);
+        DeleteFile(ResultPath);
         if Exec(ExpandConstant('{app}\{#AppExeName}'), Params, '',
                 SW_HIDE, ewWaitUntilTerminated, ResultCode) then
           DepsInstalled := (ResultCode = 0)
         else
           DepsInstalled := False;
+        if DepsInstalled then
+          DepsProblems := ''
+        else
+          DepsProblems := ReadDepsResult(ResultPath);
         DepsPage.SetProgress(100, 100);
       until DepsInstalled or (MsgBox(
-        'No se pudieron preparar todos los componentes (FFmpeg, motor de ' +
-        'descarga, Deno o transcripción). Comprueba tu conexión a internet.' + #13#10#13#10 +
+        'No se pudieron preparar estos componentes:' + #13#10#13#10 +
+        DepsProblems + #13#10 +
+        'Comprueba tu conexión a internet y que el antivirus no esté bloqueando la instalación.' + #13#10#13#10 +
         '¿Reintentar ahora?', mbError, MB_RETRYCANCEL) = IDCANCEL);
     finally
       DepsPage.Hide;
     end;
 
+    // Sin todo lo necesario no se deja una app instalada que luego falla:
+    // se deshace la instalación y se explica qué faltó.
     if not DepsInstalled then
-      MsgBox('Faltan componentes. La aplicación terminará de prepararlos ' +
-             'al abrirse, con conexión a internet.', mbInformation, MB_OK);
+    begin
+      InstallAborted := True;
+      Exec(ExpandConstant('{uninstallexe}'), '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '',
+           SW_HIDE, ewNoWait, ResultCode);
+    end;
   end;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and InstallAborted then
+  begin
+    WizardForm.FinishedHeadingLabel.Caption := 'La instalación no se completó';
+    WizardForm.FinishedLabel.Caption :=
+      'MXP Downloader no se instaló porque faltan componentes necesarios:' + #13#10#13#10 +
+      DepsProblems + #13#10 +
+      'Conéctate a internet y vuelve a ejecutar el instalador.';
+  end;
+end;
+
+// [Run] solo ofrece "Abrir MXP Downloader" si la instalación quedó completa.
+function InstallSucceeded: Boolean;
+begin
+  Result := not InstallAborted;
 end;

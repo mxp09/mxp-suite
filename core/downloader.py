@@ -28,6 +28,27 @@ logger = logging.getLogger("MXP")
 _ffmpeg = FFmpegManager()
 _deno = DenoManager()
 
+_impersonation = None
+
+
+def impersonation_available() -> bool:
+    """
+    True si yt-dlp puede hacerse pasar por Chrome (requiere curl_cffi en una
+    versión que esa versión de yt-dlp acepte). Se calcula una vez por sesión.
+    """
+    global _impersonation
+    if _impersonation is None:
+        try:
+            # Este módulo lanza ImportError si curl_cffi falta o su versión no
+            # está soportada: es la misma comprobación que hace yt-dlp.
+            import yt_dlp.networking._curlcffi  # noqa: F401
+            _impersonation = True
+        except Exception as exc:
+            logger.warning("Impersonación no disponible: %s", exc)
+            _impersonation = False
+    return _impersonation
+
+
 # Contenedores donde yt-dlp puede incrustar la miniatura (EmbedThumbnailPP).
 THUMBNAIL_FORMATS = {"mp3", "m4a", "mp4", "m4v", "mov", "mkv", "mka", "flac", "ogg", "opus"}
 
@@ -198,15 +219,14 @@ class VideoDownloader:
             opts["extractor_args"] = {
                 "youtube": {"player_client": ["tv", "web_safari", "android_vr"]}
             }
-            # Y parecer un navegador de verdad a nivel de TLS. curl_cffi ya
-            # viene empaquetado con la app, pero la impersonación es una mejora
-            # opcional: si esta versión de yt-dlp no la soporta, se sigue sin
-            # ella en vez de tirar la descarga.
-            try:
+            # Y parecer un navegador de verdad a nivel de TLS, pero SOLO si
+            # curl_cffi está y esta versión de yt-dlp lo acepta. Antes se
+            # comprobaba solo el import de ImpersonateTarget (que siempre
+            # existe), y sin curl_cffi yt-dlp abortaba con 'Impersonate target
+            # "chrome" is not available' en vez de seguir sin impersonar.
+            if impersonation_available():
                 from yt_dlp.networking.impersonate import ImpersonateTarget
                 opts["impersonate"] = ImpersonateTarget("chrome")
-            except Exception:
-                pass
 
         # ── FFmpeg ──
         # Se resuelve buscando en bin/ junto al ejecutable, en AppData y en el
@@ -388,7 +408,16 @@ class VideoDownloader:
                             status=DownloadStatus.FETCHING_INFO,
                             video_title="Reintentando con otro método...",
                         ))
-                    title, _filepath = _attempt(evasive=True)
+                    try:
+                        title, _filepath = _attempt(evasive=True)
+                    except Exception:
+                        # Si el reintento también falla, se informa del error
+                        # ORIGINAL: es el que explica qué pasa. El del reintento
+                        # solía ser ruido técnico que tapaba la causa real.
+                        if self._cancel_event.is_set():
+                            raise
+                        logger.warning("Reintento evasivo fallido", exc_info=True)
+                        raise first_error
 
                 if not self._cancel_event.is_set() and progress_callback:
                     from core.history import HistoryManager
@@ -467,7 +496,8 @@ class VideoDownloader:
         """
         last_error = None
         # Primer intento normal; si es un 403 o un bot-check, se repite con
-        # impersonación antes de rendirse.
+        # impersonación antes de rendirse. Se informa del PRIMER error: el del
+        # reintento solía ser ruido técnico que tapaba la causa real.
         for evasive in (False, True):
             try:
                 opts = self._info_opts(cookies_browser, cookies_file, evasive=evasive)
@@ -475,9 +505,11 @@ class VideoDownloader:
                     info = ydl.extract_info(url, download=False)
                 if info:
                     return info, None
-                last_error = "El sitio no devolvió información del contenido."
+                last_error = last_error or "El sitio no devolvió información del contenido."
             except Exception as exc:
-                last_error = exc
+                if evasive:
+                    logger.warning("Reintento evasivo fallido: %s", exc)
+                last_error = last_error or exc
                 if not errors.is_retryable_with_fallback(exc):
                     break
 

@@ -18,6 +18,20 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+# ── Sin diálogos de "Error del sistema" ──
+# Si a un binario externo (whisper-cli, ffmpeg...) le falta una DLL, Windows
+# abre un diálogo modal que congela la comprobación hasta que alguien pulse
+# Aceptar — en la 3.2.0 salía en plena instalación. Con este modo, que los
+# procesos hijos heredan, el binario simplemente falla con un código de error
+# y la app lo detecta y lo repara.
+if os.name == "nt":
+    try:
+        import ctypes
+        # SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX
+        ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x8000)
+    except Exception:
+        pass
+
 # ── Logging ──
 # Antes, un fallo en la máquina de otra persona no dejaba ningún rastro que
 # revisar: en modo ventana (sin consola) los `print` no van a ninguna parte.

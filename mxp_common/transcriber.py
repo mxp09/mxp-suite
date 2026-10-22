@@ -8,6 +8,9 @@ Todo vive en %APPDATA%/MXP_Downloader/{transcriber,models}.
 
 import io
 import os
+import shutil
+import subprocess
+import sys
 import zipfile
 from typing import Callable, Dict, List, Optional
 
@@ -69,6 +72,48 @@ def whisper_cli() -> Optional[str]:
     return exe if verify_executable(exe, flag="--version") else None
 
 
+# Runtime de Visual C++ que whisper-cli.exe necesita (compilado con OpenMP).
+# Un Windows limpio no lo trae: sin esto salía "no se encontró VCOMP140.DLL".
+VC_RUNTIME_DLLS = ("vcomp140.dll", "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")
+_STATUS_DLL_NOT_FOUND = 0xC0000135
+
+
+def _vc_runtime_source() -> str:
+    """Carpeta de donde copiar el runtime: la que empaqueta el .exe, o System32 en desarrollo."""
+    if getattr(sys, "frozen", False):
+        return os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)), "vcrt")
+    return os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
+
+
+def install_vc_runtime() -> bool:
+    """Copia las DLL del runtime junto a whisper-cli.exe. True si quedaron todas."""
+    src_dir, target = _vc_runtime_source(), transcriber_dir()
+    for name in VC_RUNTIME_DLLS:
+        src, dst = os.path.join(src_dir, name), os.path.join(target, name)
+        if os.path.isfile(src) and not os.path.isfile(dst):
+            shutil.copy2(src, dst + ".part")
+            os.replace(dst + ".part", dst)
+    return all(os.path.isfile(os.path.join(target, n)) for n in VC_RUNTIME_DLLS)
+
+
+def diagnose_engine() -> str:
+    """Explica en una línea por qué whisper-cli no arranca ('' si arranca)."""
+    exe = os.path.join(transcriber_dir(), "whisper-cli.exe")
+    if not os.path.isfile(exe):
+        return "falta whisper-cli.exe"
+    try:
+        res = subprocess.run([exe, "--version"], capture_output=True, timeout=10,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception as exc:
+        return f"no arranca ({exc})"
+    if res.returncode == 0:
+        return ""
+    if res.returncode & 0xFFFFFFFF == _STATUS_DLL_NOT_FOUND:
+        missing = [n for n in VC_RUNTIME_DLLS if not os.path.isfile(os.path.join(transcriber_dir(), n))]
+        return "faltan DLL del sistema: " + (", ".join(missing) or "desconocida")
+    return f"no arranca (código {res.returncode & 0xFFFFFFFF:#x})"
+
+
 def model_path(key: str) -> str:
     return os.path.join(models_dir(), MODELS[key][0])
 
@@ -94,12 +139,19 @@ def install_engine_from_zip(data: bytes) -> bool:
                 with archive.open(member) as src, open(os.path.join(target, name + ".part"), "wb") as out:
                     out.write(src.read())
                 os.replace(os.path.join(target, name + ".part"), os.path.join(target, name))
+    install_vc_runtime()
     return whisper_cli() is not None
 
 
 def ensure_engine(progress: Optional[ProgressCallback] = None, start=0.0, end=100.0) -> bool:
     if whisper_cli():
         return True
+    # Instalaciones 3.2.0: el exe está pero le falta el runtime VC++. Se
+    # repara copiándolo, sin volver a descargar nada.
+    if os.path.isfile(os.path.join(transcriber_dir(), "whisper-cli.exe")):
+        install_vc_runtime()
+        if whisper_cli():
+            return True
     data = download_to_buffer(WHISPER_ZIP_URL, progress, "Descargando el motor de transcripción...",
                               start, end, timeout=60.0).getvalue()
     return install_engine_from_zip(data)

@@ -28,3 +28,32 @@ class CoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FirstErrorTests(unittest.TestCase):
+    """El error del reintento evasivo no debe tapar el error real (bug de la 3.2.0)."""
+
+    def test_get_info_reports_first_error(self):
+        from unittest import mock
+        import yt_dlp
+        from core.downloader import VideoDownloader
+
+        calls = []
+
+        class FakeYDL:
+            def __init__(self, opts):
+                calls.append(opts)
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+            def extract_info(self, url, download=False):
+                if len(calls) == 1:
+                    raise Exception("HTTP Error 403: Forbidden")
+                raise Exception('Impersonate target "chrome" is not available')
+
+        with mock.patch.object(yt_dlp, "YoutubeDL", FakeYDL):
+            info, err = VideoDownloader().get_info("https://youtube.com/watch?v=x")
+        self.assertIsNone(info)
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("Impersonate", err.full_text)
