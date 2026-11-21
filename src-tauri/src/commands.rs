@@ -331,3 +331,24 @@ pub fn media_cancel(media: State<'_, MediaJobs>, id: u64) {
         c.cancel();
     }
 }
+
+// ── Actualizaciones ───────────────────────────────────────────────────────────
+
+#[derive(Default)]
+pub struct Updates(Mutex<Option<crate::update::UpdateInfo>>);
+
+#[tauri::command]
+pub async fn update_check(updates: State<'_, Updates>) -> Result<Option<crate::update::UpdateInfo>, String> {
+    let found = tauri::async_runtime::spawn_blocking(crate::update::check_app).await.map_err(|e| e.to_string())??;
+    *updates.0.lock().unwrap() = found.clone();
+    Ok(found)
+}
+
+#[tauri::command]
+pub async fn update_install(app: AppHandle, updates: State<'_, Updates>) -> Result<(), String> {
+    let info = updates.0.lock().unwrap().clone().ok_or("No hay ninguna actualización pendiente.")?;
+    tauri::async_runtime::spawn_blocking(move || crate::update::install_app(&info)).await.map_err(|e| e.to_string())??;
+    // El instalador no puede sustituir un .exe abierto: la app se cierra ya.
+    app.exit(0);
+    Ok(())
+}

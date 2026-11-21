@@ -379,6 +379,27 @@ async function init() {
   applySettings(info);
   showPage('download');
   checkTools();
+  checkUpdate();
+}
+
+/** Aviso discreto en la barra lateral si hay versión nueva. Sin red: nada. */
+async function checkUpdate() {
+  let u;
+  try { u = await invoke('update_check'); } catch { return; }
+  if (!u) return;
+  const box = document.createElement('div');
+  box.className = 'update';
+  box.innerHTML = `<b>Versión ${esc(u.version)} disponible</b><button class="btn primary">Actualizar</button>`;
+  box.querySelector('button').onclick = async (e) => {
+    e.target.disabled = true;
+    e.target.textContent = 'Descargando…';
+    try { await invoke('update_install'); } catch (err) {
+      toast(String(err), 8000);
+      e.target.disabled = false;
+      e.target.textContent = 'Actualizar';
+    }
+  };
+  $('.side-foot').before(box);
 }
 
 /** Aviso de Windows solo si la ventana no está delante (si lo está, ya se ve en la cola). */

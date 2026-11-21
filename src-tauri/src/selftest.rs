@@ -207,5 +207,13 @@ pub fn run_cli(args: &[String]) -> i32 {
             eprintln!("No se pudo escribir el informe en {path}: {e}");
         }
     }
+    // Resumen en texto llano para el instalador (Inno Setup no lee JSON):
+    // "OK" o una línea por cada cosa esencial que falla.
+    if let Some(path) = args.iter().position(|a| a == "--summary").and_then(|i| args.get(i + 1)) {
+        let lines: Vec<String> =
+            report.checks.iter().filter(|c| c.essential && !c.ok).map(|c| format!("{}: {}", c.label, c.detail)).collect();
+        let text = if lines.is_empty() { "OK".to_string() } else { lines.join("\r\n") };
+        let _ = std::fs::write(path, format!("\u{feff}{text}\r\n"));
+    }
     if report.ok { 0 } else { 1 }
 }

@@ -12,6 +12,7 @@ mod selftest;
 mod store;
 mod tools;
 mod transcribe;
+mod update;
 
 use tauri::Manager;
 
@@ -52,6 +53,16 @@ fn main() {
         .manage(commands::Jobs::default())
         .manage(commands::Transcriptions::default())
         .manage(commands::MediaJobs::default())
+        .manage(commands::Updates::default())
+        .setup(|_app| {
+            // Motor de descarga al día, en segundo plano: sin red no pasa nada.
+            std::thread::spawn(|| {
+                if let Err(e) = update::update_ytdlp_if_stale(false) {
+                    tracing::warn!("No se pudo comprobar yt-dlp: {e}");
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::tools_status,
             commands::app_info,
@@ -73,6 +84,8 @@ fn main() {
             commands::model_delete,
             commands::media_start,
             commands::media_cancel,
+            commands::update_check,
+            commands::update_install,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

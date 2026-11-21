@@ -95,7 +95,7 @@ pub fn download(key: &str, cancel: &AtomicBool, progress: &dyn Fn(u64, u64)) -> 
     }
     if have < m.bytes {
         let url = format!("{HF_BASE}{}", m.file);
-        let mut req = ureq::get(&url);
+        let mut req = crate::net::agent(None).get(&url);
         if have > 0 {
             req = req.header("Range", &format!("bytes={have}-"));
         }

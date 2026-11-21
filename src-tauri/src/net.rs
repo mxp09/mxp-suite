@@ -17,3 +17,17 @@ pub fn explain(e: &ureq::Error) -> String {
         format!("error de red: {raw}")
     }
 }
+
+/// Cliente HTTP de la app. TLS del propio Windows (SChannel): usa los
+/// certificados del sistema, así funciona tras proxies de empresa o antivirus
+/// que inspeccionan HTTPS con su propio certificado raíz.
+pub fn agent(timeout: Option<std::time::Duration>) -> ureq::Agent {
+    use ureq::tls::{TlsConfig, TlsProvider};
+    ureq::Agent::config_builder()
+        .tls_config(TlsConfig::builder().provider(TlsProvider::NativeTls).build())
+        .timeout_global(timeout)
+        .timeout_connect(Some(std::time::Duration::from_secs(20)))
+        .user_agent(concat!("MXP-Suite/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .into()
+}

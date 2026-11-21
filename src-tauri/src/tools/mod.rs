@@ -28,8 +28,8 @@ impl Tool {
 
     pub fn exe(self) -> &'static str {
         match self {
-            Tool::Ffmpeg => "ffmpeg.exe",
-            Tool::Ffprobe => "ffprobe.exe",
+            Tool::Ffmpeg => "ffmpeg/ffmpeg.exe",
+            Tool::Ffprobe => "ffmpeg/ffprobe.exe",
             Tool::YtDlp => "yt-dlp.exe",
             Tool::Deno => "deno.exe",
             // Va en su propia carpeta con sus DLL (ggml, runtime de VC++).

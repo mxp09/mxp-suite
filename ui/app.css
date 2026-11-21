@@ -164,3 +164,8 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .drop b { color: var(--text); }
 .drop span { font-size: 12px; }
 .drop .btn { margin-top: 8px; }
+
+/* Aviso de actualización */
+.update { margin: auto 8px 12px; padding: 10px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-soft); font-size: 12px; display: flex; flex-direction: column; gap: 8px; }
+.update .btn { height: 30px; justify-content: center; }
+.update + .side-foot { margin-top: 0; }

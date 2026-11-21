@@ -54,22 +54,29 @@ Get-File "$yt/yt-dlp.exe" "$Tmp\yt-dlp.exe"
 Assert-Hash "$Tmp\yt-dlp.exe" (Find-Hash "$Tmp\yt-sums.txt" "yt-dlp.exe")
 Move-Item -Force "$Tmp\yt-dlp.exe" "$Bin\yt-dlp.exe"
 
-# ── FFmpeg (BtbN, rama estable, estático GPL) ──
+# ── FFmpeg (BtbN, rama estable, GPL, versión "shared") ──
+# "shared": ffmpeg.exe y ffprobe.exe comparten las mismas DLL (avcodec…) en
+# vez de llevar cada uno una copia: la mitad de espacio en disco.
 Write-Host "FFmpeg $FFmpegBranch"
 $ff = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"
-$ffZip = "ffmpeg-n$FFmpegBranch-latest-win64-gpl-$FFmpegBranch.zip"
+$ffZip = "ffmpeg-n$FFmpegBranch-latest-win64-gpl-shared-$FFmpegBranch.zip"
 Get-File "$ff/checksums.sha256" "$Tmp\ff-sums.txt"
 Get-File "$ff/$ffZip" "$Tmp\$ffZip"
 Assert-Hash "$Tmp\$ffZip" (Find-Hash "$Tmp\ff-sums.txt" $ffZip)
+$ffDir = Join-Path $Bin "ffmpeg"
+Remove-Item -Recurse -Force $ffDir -ErrorAction SilentlyContinue
+Remove-Item -Force "$Bin\ffmpeg.exe", "$Bin\ffprobe.exe" -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $ffDir | Out-Null
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead("$Tmp\$ffZip")
 try {
-    foreach ($name in "ffmpeg.exe", "ffprobe.exe") {
-        $entry = $zip.Entries | Where-Object { $_.Name -eq $name } | Select-Object -First 1
-        if (-not $entry) { throw "$name no está en $ffZip" }
-        [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, "$Bin\$name", $true)
+    foreach ($e in $zip.Entries) {
+        if ($e.FullName -match '/bin/' -and ($e.Name -in 'ffmpeg.exe', 'ffprobe.exe' -or $e.Name -like '*.dll')) {
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($e, (Join-Path $ffDir $e.Name), $true)
+        }
     }
 } finally { $zip.Dispose() }
+if (-not (Test-Path "$ffDir\ffmpeg.exe")) { throw "ffmpeg.exe no está en $ffZip" }
 
 # ── Deno ──
 Write-Host "Deno"
@@ -111,6 +118,18 @@ if (-not $redist) { throw "No se encuentra VC\Redist en Visual Studio Build Tool
 foreach ($dll in "Microsoft.VC143.OpenMP\vcomp140.dll", "Microsoft.VC143.CRT\msvcp140.dll",
                  "Microsoft.VC143.CRT\vcruntime140.dll", "Microsoft.VC143.CRT\vcruntime140_1.dll") {
     Copy-Item (Join-Path $redist.FullName $dll) $wDir
+}
+
+# ── WebView2 (bootstrapper oficial de Microsoft, ~2 MB) ──
+# Windows 11 lo trae siempre y Windows 10 casi siempre; el instalador solo lo
+# usa si falta. Microsoft no publica hash: se comprueba su firma digital.
+Write-Host "WebView2 bootstrapper"
+$wv = Join-Path $Root "vendor\MicrosoftEdgeWebview2Setup.exe"
+Get-File "https://go.microsoft.com/fwlink/p/?LinkId=2124703" $wv
+$sig = Get-AuthenticodeSignature $wv
+if ($sig.Status -ne "Valid" -or $sig.SignerCertificate.Subject -notmatch "O=Microsoft Corporation") {
+    Remove-Item $wv -Force
+    throw "El instalador de WebView2 no tiene una firma válida de Microsoft ($($sig.Status))"
 }
 
 Remove-Item -Recurse -Force $Tmp
