@@ -2195,6 +2195,7 @@ name = "mxp-suite"
 version = "4.0.0"
 dependencies = [
  "anyhow",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

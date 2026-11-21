@@ -107,3 +107,13 @@ pub fn explain_exit_code(code: i32) -> Option<&'static str> {
         _ => None,
     }
 }
+
+/// Cierra un proceso y todos sus hijos (yt-dlp → ffmpeg).
+pub fn kill_tree(pid: u32) {
+    let mut cmd = std::process::Command::new("taskkill");
+    cmd.args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    hide_console(&mut cmd);
+    let _ = cmd.status();
+}

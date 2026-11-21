@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod download;
 mod logs;
 mod paths;
 mod platform;
@@ -40,7 +41,15 @@ fn main() {
                 let _ = w.set_focus();
             }
         }))
-        .invoke_handler(tauri::generate_handler![commands::tools_status, commands::app_info])
+        .manage(commands::Jobs::default())
+        .invoke_handler(tauri::generate_handler![
+            commands::tools_status,
+            commands::app_info,
+            commands::download_start,
+            commands::download_cancel,
+            commands::video_info,
+            commands::playlist_expand,
+        ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
             tracing::error!("Tauri no arrancó: {e:?}");

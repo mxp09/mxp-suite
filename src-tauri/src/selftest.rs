@@ -1,4 +1,6 @@
-//! `mxp-suite.exe --self-test [--report <archivo>]`
+//! `mxp-suite.exe --self-test [--full] [--report <archivo>]`
+//!
+//! `--full` añade las pruebas que necesitan internet (descargas reales).
 //!
 //! Prueba real de que todo funciona en ESTE PC. La usa el instalador antes de
 //! dar la instalación por buena y la usamos en las pruebas en Windows limpio.
@@ -62,7 +64,54 @@ fn cpu_features() -> String {
     if f.is_empty() { "básico".into() } else { f.join(", ") }
 }
 
-pub fn run() -> Report {
+/// Vídeo público, corto (19 s) y estable desde 2005: el primero de YouTube.
+const TEST_URL: &str = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
+
+/// Carpeta de prueba con acentos, ñ y espacios: si algo se rompe con rutas
+/// como las de un usuario "Iván" con OneDrive, tiene que romperse aquí.
+fn scratch_dir() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join("MXP prueba ñandú áéíóú");
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+fn download_check(kind: crate::download::Kind, format: &str, dir: &Path) -> Result<String, String> {
+    use crate::download::{download, CancelHandle, Request};
+    let req = Request {
+        url: TEST_URL.into(),
+        kind,
+        max_height: Some(360),
+        format: format.into(),
+        audio_bitrate: 192,
+        output_dir: dir.to_path_buf(),
+        start: None,
+        end: None,
+        cookies_browser: None,
+        cookies_file: None,
+    };
+    let p = download(&req, &CancelHandle::default(), &|_| {});
+    match (p.status, p.file, p.error) {
+        ("finished", Some(f), _) if f.is_file() => {
+            let size = f.metadata().map(|m| m.len()).unwrap_or(0);
+            Ok(format!("{} ({} KB)", f.file_name().unwrap_or_default().to_string_lossy(), size / 1024))
+        }
+        ("finished", f, _) => Err(format!("terminó pero no está el archivo: {f:?}")),
+        (_, _, Some(e)) => Err(e.full_text()),
+        (s, _, _) => Err(format!("estado inesperado: {s}")),
+    }
+}
+
+/// Pruebas que necesitan internet: descargar de verdad.
+fn network_checks(checks: &mut Vec<Check>) {
+    use crate::download::Kind;
+    let dir = scratch_dir();
+    checks.push(check("dl-video", "Descargar video (MP4)", true, download_check(Kind::Video, "mp4", &dir)));
+    checks.push(check("dl-audio", "Descargar audio (MP3)", true, download_check(Kind::Audio, "mp3", &dir)));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+pub fn run(full: bool) -> Report {
     let mut checks = Vec::new();
 
     let (os, build) = platform::os_version();
@@ -95,12 +144,16 @@ pub fn run() -> Report {
         checks.push(check(&format!("tool:{}", status.tool.exe()), status.label, true, result));
     }
 
+    if full {
+        network_checks(&mut checks);
+    }
+
     let ok = checks.iter().all(|c| c.ok || !c.essential);
     Report { ok, version: env!("CARGO_PKG_VERSION"), checks }
 }
 
 pub fn run_cli(args: &[String]) -> i32 {
-    let report = run();
+    let report = run(args.iter().any(|a| a == "--full"));
     for c in &report.checks {
         let mark = if c.ok { "OK  " } else if c.essential { "FALLA" } else { "aviso" };
         println!("[{mark}] {}: {}", c.label, c.detail);
