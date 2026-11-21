@@ -20,10 +20,11 @@ pub enum Tool {
     Ffprobe,
     YtDlp,
     Deno,
+    Whisper,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 4] = [Tool::Ffmpeg, Tool::Ffprobe, Tool::YtDlp, Tool::Deno];
+    pub const ALL: [Tool; 5] = [Tool::Ffmpeg, Tool::Ffprobe, Tool::YtDlp, Tool::Deno, Tool::Whisper];
 
     pub fn exe(self) -> &'static str {
         match self {
@@ -31,6 +32,8 @@ impl Tool {
             Tool::Ffprobe => "ffprobe.exe",
             Tool::YtDlp => "yt-dlp.exe",
             Tool::Deno => "deno.exe",
+            // Va en su propia carpeta con sus DLL (ggml, runtime de VC++).
+            Tool::Whisper => "whisper/whisper-cli.exe",
         }
     }
 
@@ -40,6 +43,7 @@ impl Tool {
             Tool::Ffprobe => "FFprobe (lectura de archivos de video)",
             Tool::YtDlp => "Motor de descarga (yt-dlp)",
             Tool::Deno => "Deno (necesario para YouTube)",
+            Tool::Whisper => "Motor de transcripción (whisper.cpp)",
         }
     }
 
@@ -47,7 +51,7 @@ impl Tool {
         match self {
             Tool::Ffmpeg | Tool::Ffprobe => &["-version"],
             Tool::YtDlp => &["--version"],
-            Tool::Deno => &["--version"],
+            Tool::Deno | Tool::Whisper => &["--version"],
         }
     }
 }
@@ -98,8 +102,11 @@ pub fn probe(exe: &Path, args: &[&str], timeout: Duration) -> Result<String, Str
             .map(str::to_string)
             .unwrap_or_else(|| format!("terminó con error (código {code:#x})")));
     }
-    let text = String::from_utf8_lossy(&out.stdout);
-    Ok(text.lines().next().unwrap_or("").trim().to_string())
+    // Unos escriben la versión por stdout y otros (whisper-cli) por stderr.
+    let text = format!("{}
+{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    let line = text.lines().find(|l| l.to_lowercase().contains("version")).or_else(|| text.lines().find(|l| !l.trim().is_empty()));
+    Ok(line.unwrap_or("").trim().to_string())
 }
 
 fn explain_spawn_error(e: &std::io::Error) -> String {

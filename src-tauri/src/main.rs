@@ -4,11 +4,13 @@
 mod commands;
 mod download;
 mod logs;
+mod net;
 mod paths;
 mod platform;
 mod selftest;
 mod store;
 mod tools;
+mod transcribe;
 
 use tauri::Manager;
 
@@ -46,6 +48,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(commands::Jobs::default())
+        .manage(commands::Transcriptions::default())
         .invoke_handler(tauri::generate_handler![
             commands::tools_status,
             commands::app_info,
@@ -57,6 +60,14 @@ fn main() {
             commands::settings_save,
             commands::history_list,
             commands::history_clear,
+            commands::transcribe_languages,
+            commands::transcribe_start,
+            commands::transcribe_cancel,
+            commands::transcribe_export,
+            commands::models_list,
+            commands::model_download,
+            commands::model_cancel,
+            commands::model_delete,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

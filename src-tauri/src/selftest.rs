@@ -108,7 +108,46 @@ fn network_checks(checks: &mut Vec<Check>) {
     let dir = scratch_dir();
     checks.push(check("dl-video", "Descargar video (MP4)", true, download_check(Kind::Video, "mp4", &dir)));
     checks.push(check("dl-audio", "Descargar audio (MP3)", true, download_check(Kind::Audio, "mp3", &dir)));
+    checks.push(check("transcribe", "Transcribir y exportar (DOCX, PDF, SRT)", true, transcribe_check(&dir)));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Transcribe el audio recién bajado con el modelo más pequeño que haya (si
+/// no hay ninguno, baja Tiny: 78 MB) y lo exporta a los formatos "difíciles".
+fn transcribe_check(dir: &Path) -> Result<String, String> {
+    use crate::transcribe::{self, export, models};
+    let audio = std::fs::read_dir(dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .find(|p| p.extension().is_some_and(|x| x == "mp3"))
+        .ok_or("no hay audio que transcribir (falló la descarga de audio)")?;
+    let model = match models::MODELS.iter().find(|m| models::is_installed(m)) {
+        Some(m) => m,
+        None => {
+            let tiny = models::find("tiny").expect("tiny en el catálogo");
+            models::download("tiny", &Default::default(), &|_, _| {}).map_err(|e| format!("no se pudo bajar el modelo Tiny: {e}"))?;
+            tiny
+        }
+    };
+    let t0 = std::time::Instant::now();
+    let opts = transcribe::Options {
+        source: audio.display().to_string(),
+        model: model.key.into(),
+        language: "auto".into(),
+        translate: false,
+        prompt: String::new(),
+        cookies_browser: None,
+        cookies_file: None,
+    };
+    let t = transcribe::transcribe(&opts, &transcribe::Cancel::default(), &|_, _| {})?;
+    if t.words.len() < 5 {
+        return Err(format!("salió casi vacía ({} palabras)", t.words.len()));
+    }
+    for fmt in ["docx", "pdf", "srt"] {
+        let p = dir.join(format!("transcripción.{fmt}"));
+        export::export(&t, fmt, &p, export::default_granularity(fmt), true).map_err(|e| format!("{fmt}: {e}"))?;
+    }
+    Ok(format!("{} palabras en {:.0} s con {} (idioma: {})", t.words.len(), t0.elapsed().as_secs_f64(), model.name, t.language))
 }
 
 pub fn run(full: bool) -> Report {

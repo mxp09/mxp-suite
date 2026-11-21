@@ -212,7 +212,6 @@ T.event.listen('download', ({ payload: p }) => {
   if (p.file) job.file = p.file;
   if (p.status === 'finished') {
     job.state = 'done';
-    if (job.transcribe) window.dispatchEvent(new CustomEvent('mxp:transcribe', { detail: job.file }));
   } else if (p.status === 'error') { job.state = 'failed'; job.error = p.error; }
   else if (p.status === 'cancelled') { job.state = 'cancelled'; }
   if (job.state !== 'running') pump();
@@ -230,6 +229,7 @@ function renderQueue() {
     el.className = `job ${j.state === 'done' ? 'done' : ''} ${j.state === 'failed' ? 'failed' : ''}`;
     let status;
     if (j.state === 'waiting') status = '<span>En espera</span>';
+    else if (j.kind === 'transcribe' && j.state === 'running') status = `<span>${esc(j.message || 'Transcribiendo…')} ${Math.round(j.percent || 0)} %</span>`;
     else if (j.state === 'running') status = `<span>${STATUS_TEXT[j.status] || 'Descargando'} ${j.status === 'downloading' ? Math.round(j.percent) + ' %' : ''}</span><span>${esc(fmtSpeed(j.speed))}</span>`;
     else if (j.state === 'done') status = '<span>Listo</span>';
     else if (j.state === 'cancelled') status = '<span>Cancelado</span>';
@@ -242,6 +242,14 @@ function renderQueue() {
       <div class="acts"></div>`;
     const acts = $('.acts', el);
     const btn = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; acts.append(b); };
+    if (j.kind === 'transcribe') {
+      if (j.state === 'running') btn('Cancelar', () => invoke('transcribe_cancel', { id: j.jobId }));
+      if (j.state === 'done') btn('Ver texto', () => j.onView());
+      if (j.state === 'failed') btn('Reintentar', () => j.onRetry());
+      if (!acts.children.length) acts.remove();
+      list.append(el);
+      continue;
+    }
     if (j.state === 'running') btn('Cancelar', () => invoke('download_cancel', { id: j.jobId }));
     if (j.state === 'waiting') btn('Quitar', () => { queue.splice(queue.indexOf(j), 1); renderQueue(); });
     if (j.state === 'done' && j.file) {
@@ -259,6 +267,8 @@ async function startDownload(urls) {
   if (!urls.length) { toast('Pega primero un enlace.'); return; }
   const bad = urls.find((u) => !platformOf(u));
   if (bad) { toast(`Esto no parece un enlace: ${bad}`); return; }
+  // Modo Texto: la transcripción baja ella misma solo el audio.
+  if (settings.mode === 'text') { urls.forEach((u) => window.MXP.transcribe(u)); return; }
   const expanded = [];
   for (const url of urls) {
     if (!isPlaylist(url)) { expanded.push(url); continue; }
@@ -357,5 +367,8 @@ async function init() {
   showPage('download');
   checkTools();
 }
+
+// Lo que comparten las demás páginas (transcribe.js, tools.js).
+window.MXP = { invoke, esc, toast, queue, renderQueue, showPage, fmtTime, get settings() { return settings; }, saveSettings, cookieArgs };
 
 init().catch((e) => toast(`Error al iniciar la interfaz: ${e}`, 10000));

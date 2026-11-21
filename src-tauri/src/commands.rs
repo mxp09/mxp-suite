@@ -131,3 +131,156 @@ pub fn history_list() -> Vec<crate::store::HistoryEntry> {
 pub fn history_clear() {
     crate::store::clear_history()
 }
+
+// ── Transcripción ─────────────────────────────────────────────────────────────
+
+use crate::transcribe::{self, export, model::Granularity, models};
+
+#[derive(Default)]
+pub struct Transcriptions {
+    running: Mutex<HashMap<u64, transcribe::Cancel>>,
+    done: Mutex<HashMap<u64, transcribe::model::Transcript>>,
+    models: Mutex<HashMap<String, Arc<AtomicBool>>>,
+}
+
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
+#[derive(Clone, Serialize)]
+struct SentenceOut {
+    start: f64,
+    end: f64,
+    text: String,
+}
+
+#[derive(Clone, Serialize)]
+struct TranscriptEvent {
+    id: u64,
+    /// running | done | error | cancelled
+    status: &'static str,
+    message: String,
+    percent: f64,
+    source: Option<String>,
+    language: Option<String>,
+    duration: Option<f64>,
+    sentences: Option<Vec<SentenceOut>>,
+}
+
+#[tauri::command]
+pub fn transcribe_languages() -> Vec<(&'static str, &'static str)> {
+    transcribe::LANGUAGES.to_vec()
+}
+
+#[tauri::command]
+pub fn transcribe_start(app: AppHandle, jobs: State<'_, Jobs>, tr: State<'_, Transcriptions>, options: transcribe::Options) -> u64 {
+    let id = jobs.next.fetch_add(1, Ordering::Relaxed) + 1;
+    let cancel = transcribe::Cancel::default();
+    tr.running.lock().unwrap().insert(id, cancel.clone());
+    std::thread::spawn(move || {
+        use tauri::Manager;
+        let ev = |status, message: String, percent| TranscriptEvent {
+            id, status, message, percent, source: None, language: None, duration: None, sentences: None,
+        };
+        let result = transcribe::transcribe(&options, &cancel, &|msg, pct| {
+            let _ = app.emit("transcribe", ev("running", msg.to_string(), pct));
+        });
+        let state = app.state::<Transcriptions>();
+        state.running.lock().unwrap().remove(&id);
+        let out = match result {
+            Ok(t) => {
+                let mut e = ev("done", "Listo".into(), 100.0);
+                e.sentences = Some(t.sentences().iter().map(|s| SentenceOut { start: s.start, end: s.end, text: s.text() }).collect());
+                e.source = Some(t.source.clone());
+                e.language = Some(t.language.clone());
+                e.duration = Some(t.duration);
+                state.done.lock().unwrap().insert(id, t);
+                e
+            }
+            Err(msg) if msg == "cancelado" => ev("cancelled", msg, 0.0),
+            Err(msg) => {
+                tracing::error!("Transcripción fallida: {msg}");
+                ev("error", msg, 0.0)
+            }
+        };
+        let _ = app.emit("transcribe", out);
+    });
+    id
+}
+
+#[tauri::command]
+pub fn transcribe_cancel(tr: State<'_, Transcriptions>, id: u64) {
+    if let Some(c) = tr.running.lock().unwrap().get(&id) {
+        c.cancel();
+    }
+}
+
+/// Exporta. `edits` = texto de cada frase tal como lo dejó el usuario en el editor.
+#[tauri::command]
+pub fn transcribe_export(
+    tr: State<'_, Transcriptions>,
+    id: u64,
+    format: String,
+    path: String,
+    granularity: Option<Granularity>,
+    stamps: bool,
+    edits: Option<Vec<String>>,
+) -> Result<(), String> {
+    let mut map = tr.done.lock().unwrap();
+    let t = map.get_mut(&id).ok_or("Esa transcripción ya no está en memoria.")?;
+    if let Some(e) = edits {
+        t.apply_edits(&e);
+    }
+    let g = granularity.unwrap_or_else(|| export::default_granularity(&format));
+    export::export(t, &format, std::path::Path::new(&path), g, stamps)
+}
+
+#[tauri::command]
+pub fn models_list() -> Vec<models::ModelStatus> {
+    models::list()
+}
+
+#[derive(Clone, Serialize)]
+struct ModelEvent {
+    key: String,
+    /// downloading | done | error | cancelled
+    status: &'static str,
+    done: u64,
+    total: u64,
+    error: Option<String>,
+}
+
+#[tauri::command]
+pub fn model_download(app: AppHandle, tr: State<'_, Transcriptions>, key: String) {
+    let flag = Arc::new(AtomicBool::new(false));
+    tr.models.lock().unwrap().insert(key.clone(), flag.clone());
+    std::thread::spawn(move || {
+        use tauri::Manager;
+        let last = std::cell::Cell::new(std::time::Instant::now());
+        let res = models::download(&key, &flag, &|done, total| {
+            // Como mucho 4 avisos por segundo: un modelo de 3 GB son miles de trozos.
+            if last.get().elapsed().as_millis() > 250 {
+                last.set(std::time::Instant::now());
+                let _ = app.emit("model", ModelEvent { key: key.clone(), status: "downloading", done, total, error: None });
+            }
+        });
+        app.state::<Transcriptions>().models.lock().unwrap().remove(&key);
+        let (status, error) = match res {
+            Ok(()) => ("done", None),
+            Err(e) if e == "cancelado" => ("cancelled", None),
+            Err(e) => ("error", Some(e)),
+        };
+        let _ = app.emit("model", ModelEvent { key, status, done: 0, total: 0, error });
+    });
+}
+
+#[tauri::command]
+pub fn model_cancel(tr: State<'_, Transcriptions>, key: String) {
+    if let Some(f) = tr.models.lock().unwrap().get(&key) {
+        f.store(true, Ordering::Relaxed);
+    }
+}
+
+#[tauri::command]
+pub fn model_delete(key: String) -> Result<(), String> {
+    models::delete(&key).map_err(|e| e.to_string())
+}

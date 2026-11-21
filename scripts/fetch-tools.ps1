@@ -82,6 +82,37 @@ Assert-Hash "$Tmp\deno.zip" $denoHash
 Expand-Archive -Force "$Tmp\deno.zip" $Tmp
 Move-Item -Force "$Tmp\deno.exe" "$Bin\deno.exe"
 
+# ── whisper.cpp (motor de transcripción), versión fijada con hash ──
+# Se usa el binario oficial: en las pruebas fue 1,7x más rápido que compilarlo
+# nosotros y elige solo la variante para cada procesador (ggml-cpu-*.dll).
+Write-Host "whisper.cpp"
+$wUrl = "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.2/whisper-bin-x64.zip"
+$wSha = "49dcc16de826f20bd53d44f947a1ae49dfa81f86cad67a64d80820cb192d674a"
+Get-File $wUrl "$Tmp\whisper.zip"
+Assert-Hash "$Tmp\whisper.zip" $wSha
+$wDir = Join-Path $Bin "whisper"
+Remove-Item -Recurse -Force $wDir -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $wDir | Out-Null
+$zip = [IO.Compression.ZipFile]::OpenRead("$Tmp\whisper.zip")
+try {
+    foreach ($e in $zip.Entries) {
+        if ($e.Name -eq "whisper-cli.exe" -or ($e.Name -like "*.dll" -and ($e.Name -like "whisper*" -or $e.Name -like "ggml*"))) {
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($e, (Join-Path $wDir $e.Name), $true)
+        }
+    }
+} finally { $zip.Dispose() }
+
+# Runtime de Visual C++ junto a whisper-cli (despliegue app-local, permitido
+# por Microsoft): sin esto, en un Windows limpio salía "falta VCOMP140.DLL".
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$vs = & $vswhere -latest -products * -property installationPath
+$redist = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64" -Directory | Select-Object -Last 1
+if (-not $redist) { throw "No se encuentra VC\Redist en Visual Studio Build Tools" }
+foreach ($dll in "Microsoft.VC143.OpenMP\vcomp140.dll", "Microsoft.VC143.CRT\msvcp140.dll",
+                 "Microsoft.VC143.CRT\vcruntime140.dll", "Microsoft.VC143.CRT\vcruntime140_1.dll") {
+    Copy-Item (Join-Path $redist.FullName $dll) $wDir
+}
+
 Remove-Item -Recurse -Force $Tmp
 Write-Host ""
 Get-ChildItem $Bin | ForEach-Object { "{0,-14} {1,8:N1} MB" -f $_.Name, ($_.Length / 1MB) }
