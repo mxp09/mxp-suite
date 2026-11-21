@@ -1,0 +1,4 @@
+# CRT estática: ningún .exe de MXP depende del VC++ Redistributable.
+# Fue la causa del "no se encontró VCOMP140.DLL" de la 3.2.0.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

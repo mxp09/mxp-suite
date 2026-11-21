@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>MXP Suite</title>
+  <style>
+    body { background:#0F0F0F; color:#F2F2F2; font-family:"Segoe UI",system-ui,sans-serif; margin:32px; }
+    .ok { color:#7CDB6B } .bad { color:#FF6B6B }
+  </style>
+</head>
+<body>
+  <h1>MXP Suite</h1>
+  <p id="info">Cargando…</p>
+  <ul id="tools"></ul>
+  <script>
+    const { invoke } = window.__TAURI__.core;
+    invoke('app_info').then(i => document.getElementById('info').textContent = `v${i.version} · ${i.os}`);
+    invoke('tools_status').then(list => {
+      document.getElementById('tools').innerHTML = list.map(t =>
+        `<li class="${t.ok ? 'ok' : 'bad'}">${t.label}: ${t.ok ? t.version : t.problem}</li>`).join('');
+    });
+  </script>
+</body>
+</html>
