@@ -1,0 +1,11 @@
+<Configuration>
+  <Networking>Default</Networking>
+  <MemoryInMB>6144</MemoryInMB>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>D:\SOFTWARE\MXP\MXP SUITE\MXPSUITE-RS\dist\installer</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\Instalador</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+</Configuration>
