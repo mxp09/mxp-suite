@@ -190,8 +190,9 @@ begin
     if ModelInstalled(I) then ModelPage.Add(ModelNames[I] + '   (ya instalado)')
     else ModelPage.Add(ModelNames[I] + '   (' + SizeText(ModelSizes[I]) + ')');
   end;
-  // Recomendado marcado por defecto, salvo que ya esté.
-  ModelPage.Values[4] := not ModelInstalled(3);
+  // Recomendado marcado por defecto, salvo que ya esté o se pida /NOMODELS
+  // (pruebas automáticas e instalaciones desatendidas sin bajar 574 MB).
+  ModelPage.Values[4] := not ModelInstalled(3) and (ExpandConstant('{param:NOMODELS|0}') = '0');
   ModelPage.CheckListBox.OnClickCheck := @ModelsChanged;
   ModelPage.CheckListBox.Height := ScaleY(176);
   ModelTotal := TNewStaticText.Create(ModelPage);
@@ -293,7 +294,8 @@ begin
       DeleteFile(Summary);
       Ok := Exec(ExpandConstant('{app}\{#AppExeName}'), '--self-test --summary "' + Summary + '"', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
       if Ok then Problems := '' else Problems := ReadSummary(Summary);
-    until Ok or (MsgBox('Hay componentes que no funcionan en este PC:' + #13#10#13#10 + Problems + #13#10 +
+    // En silencioso no hay a quién preguntar: un intento y se informa.
+    until Ok or WizardSilent or (MsgBox('Hay componentes que no funcionan en este PC:' + #13#10#13#10 + Problems + #13#10 +
                         'Si tienes antivirus, revisa si ha bloqueado algún archivo de MXP Suite.' + #13#10#13#10 +
                         '¿Reintentar?', mbError, MB_RETRYCANCEL) = IDCANCEL);
     if not Ok then

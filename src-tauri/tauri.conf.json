@@ -18,7 +18,8 @@
         "minHeight": 600,
         "center": true,
         "backgroundColor": "#0F0F0F",
-        "theme": "Dark"
+        "theme": "Dark",
+        "additionalBrowserArgs": "--disable-gpu --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
       }
     ],
     "security": {

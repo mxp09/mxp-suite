@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Descarga y verifica las herramientas oficiales que lleva el instalador.
 

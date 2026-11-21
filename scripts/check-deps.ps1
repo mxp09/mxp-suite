@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Falla si algún .exe/.dll entregado importa una DLL que un Windows limpio no trae.
 

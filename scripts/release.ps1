@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Compila MXP Suite 4 y genera el instalador. Publica solo con -Publish.
 
