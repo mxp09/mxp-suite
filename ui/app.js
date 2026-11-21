@@ -212,6 +212,7 @@ T.event.listen('download', ({ payload: p }) => {
   if (p.file) job.file = p.file;
   if (p.status === 'finished') {
     job.state = 'done';
+    notify('Descarga lista', job.title);
   } else if (p.status === 'error') { job.state = 'failed'; job.error = p.error; }
   else if (p.status === 'cancelled') { job.state = 'cancelled'; }
   if (job.state !== 'running') pump();
@@ -229,6 +230,7 @@ function renderQueue() {
     el.className = `job ${j.state === 'done' ? 'done' : ''} ${j.state === 'failed' ? 'failed' : ''}`;
     let status;
     if (j.state === 'waiting') status = '<span>En espera</span>';
+    else if (j.kind === 'media' && j.state === 'running') status = `<span>Procesando ${Math.round(j.percent || 0)} %</span>`;
     else if (j.kind === 'transcribe' && j.state === 'running') status = `<span>${esc(j.message || 'Transcribiendo…')} ${Math.round(j.percent || 0)} %</span>`;
     else if (j.state === 'running') status = `<span>${STATUS_TEXT[j.status] || 'Descargando'} ${j.status === 'downloading' ? Math.round(j.percent) + ' %' : ''}</span><span>${esc(fmtSpeed(j.speed))}</span>`;
     else if (j.state === 'done') status = '<span>Listo</span>';
@@ -242,6 +244,17 @@ function renderQueue() {
       <div class="acts"></div>`;
     const acts = $('.acts', el);
     const btn = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; acts.append(b); };
+    if (j.kind === 'media') {
+      if (j.state === 'running') btn('Cancelar', () => invoke('media_cancel', { id: j.jobId }));
+      if (j.state === 'done' && j.file) {
+        btn('Abrir', () => T.opener.openPath(j.file).catch((e) => toast(String(e))));
+        btn('Carpeta', () => T.opener.revealItemInDir(j.file).catch((e) => toast(String(e))));
+      }
+      if (j.state === 'failed' || j.state === 'cancelled') btn('Reintentar', () => j.onRetry());
+      if (!acts.children.length) acts.remove();
+      list.append(el);
+      continue;
+    }
     if (j.kind === 'transcribe') {
       if (j.state === 'running') btn('Cancelar', () => invoke('transcribe_cancel', { id: j.jobId }));
       if (j.state === 'done') btn('Ver texto', () => j.onView());
@@ -368,7 +381,17 @@ async function init() {
   checkTools();
 }
 
+/** Aviso de Windows solo si la ventana no está delante (si lo está, ya se ve en la cola). */
+async function notify(title, body) {
+  if (document.hasFocus()) return;
+  try {
+    const n = T.notification;
+    if (!(await n.isPermissionGranted()) && (await n.requestPermission()) !== 'granted') return;
+    n.sendNotification({ title, body });
+  } catch { /* sin notificaciones no pasa nada */ }
+}
+
 // Lo que comparten las demás páginas (transcribe.js, tools.js).
-window.MXP = { invoke, esc, toast, queue, renderQueue, showPage, fmtTime, get settings() { return settings; }, saveSettings, cookieArgs };
+window.MXP = { notify, invoke, esc, toast, queue, renderQueue, showPage, fmtTime, get settings() { return settings; }, saveSettings, cookieArgs };
 
 init().catch((e) => toast(`Error al iniciar la interfaz: ${e}`, 10000));

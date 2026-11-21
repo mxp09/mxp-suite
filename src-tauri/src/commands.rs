@@ -284,3 +284,50 @@ pub fn model_cancel(tr: State<'_, Transcriptions>, key: String) {
 pub fn model_delete(key: String) -> Result<(), String> {
     models::delete(&key).map_err(|e| e.to_string())
 }
+
+// ── Convertir y comprimir ─────────────────────────────────────────────────────
+
+#[derive(Default)]
+pub struct MediaJobs(Mutex<HashMap<u64, crate::media::Cancel>>);
+
+#[derive(Clone, Serialize)]
+struct MediaEvent {
+    id: u64,
+    /// running | done | error | cancelled
+    status: &'static str,
+    percent: f64,
+    file: Option<String>,
+    error: Option<String>,
+}
+
+#[tauri::command]
+pub fn media_start(app: AppHandle, jobs: State<'_, Jobs>, media: State<'_, MediaJobs>, job: crate::media::Job) -> u64 {
+    let id = jobs.next.fetch_add(1, Ordering::Relaxed) + 1;
+    let cancel = crate::media::Cancel::default();
+    media.0.lock().unwrap().insert(id, cancel.clone());
+    std::thread::spawn(move || {
+        use tauri::Manager;
+        let last = std::cell::Cell::new(std::time::Instant::now());
+        let r = crate::media::process(&job, &cancel, &|pct| {
+            if last.get().elapsed().as_millis() > 200 {
+                last.set(std::time::Instant::now());
+                let _ = app.emit("media", MediaEvent { id, status: "running", percent: pct * 100.0, file: None, error: None });
+            }
+        });
+        app.state::<MediaJobs>().0.lock().unwrap().remove(&id);
+        let ev = match r {
+            Ok(f) => MediaEvent { id, status: "done", percent: 100.0, file: Some(f.display().to_string()), error: None },
+            Err(e) if e == "cancelado" => MediaEvent { id, status: "cancelled", percent: 0.0, file: None, error: None },
+            Err(e) => MediaEvent { id, status: "error", percent: 0.0, file: None, error: Some(e) },
+        };
+        let _ = app.emit("media", ev);
+    });
+    id
+}
+
+#[tauri::command]
+pub fn media_cancel(media: State<'_, MediaJobs>, id: u64) {
+    if let Some(c) = media.0.lock().unwrap().get(&id) {
+        c.cancel();
+    }
+}

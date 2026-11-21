@@ -18,6 +18,7 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-notification = "2"
 ureq = { version = "3", default-features = false, features = ["native-tls", "gzip"] }
 sha2 = "0.10"
 docx-rs = "0.4"

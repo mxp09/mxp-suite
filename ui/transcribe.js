@@ -142,7 +142,7 @@
     job.message = p.message;
     if (p.status === 'done') {
       Object.assign(job, { state: 'done', result: p, title: p.source || job.title });
-      T.notification?.sendNotification?.({ title: 'Transcripción lista', body: job.title });
+      window.MXP.notify('Transcripción lista', job.title);
       if (!document.querySelector('section[data-page="transcribe"]').hidden) showResult(job);
     } else if (p.status === 'error') {
       Object.assign(job, { state: 'failed', error: { message: p.message, hint: '' } });
@@ -189,10 +189,8 @@
     if (f) $('#tr-source').value = f;
   };
   $('#tr-go').onclick = () => transcribe($('#tr-source').value);
-  T.webview.getCurrentWebview().onDragDropEvent(({ payload }) => {
-    if (payload.type !== 'drop' || document.querySelector('section[data-page="transcribe"]').hidden) return;
-    const [first] = payload.paths || [];
-    if (first) $('#tr-source').value = first;
+  window.addEventListener('mxp:drop', (e) => {
+    if (!document.querySelector('section[data-page="transcribe"]').hidden) $('#tr-source').value = e.detail[0];
   });
 
   window.MXP.transcribe = (src) => { showPage('transcribe'); transcribe(src); };

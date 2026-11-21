@@ -4,6 +4,7 @@
 mod commands;
 mod download;
 mod logs;
+mod media;
 mod net;
 mod paths;
 mod platform;
@@ -47,8 +48,10 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(commands::Jobs::default())
         .manage(commands::Transcriptions::default())
+        .manage(commands::MediaJobs::default())
         .invoke_handler(tauri::generate_handler![
             commands::tools_status,
             commands::app_info,
@@ -68,6 +71,8 @@ fn main() {
             commands::model_download,
             commands::model_cancel,
             commands::model_delete,
+            commands::media_start,
+            commands::media_cancel,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
