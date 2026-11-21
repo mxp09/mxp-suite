@@ -2,23 +2,139 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MXP Suite</title>
-  <style>
-    body { background:#0F0F0F; color:#F2F2F2; font-family:"Segoe UI",system-ui,sans-serif; margin:32px; }
-    .ok { color:#7CDB6B } .bad { color:#FF6B6B }
-  </style>
+  <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <h1>MXP Suite</h1>
-  <p id="info">Cargando…</p>
-  <ul id="tools"></ul>
-  <script>
-    const { invoke } = window.__TAURI__.core;
-    invoke('app_info').then(i => document.getElementById('info').textContent = `v${i.version} · ${i.os}`);
-    invoke('tools_status').then(list => {
-      document.getElementById('tools').innerHTML = list.map(t =>
-        `<li class="${t.ok ? 'ok' : 'bad'}">${t.label}: ${t.ok ? t.version : t.problem}</li>`).join('');
-    });
-  </script>
+<div class="app">
+  <!-- ── Barra lateral ── -->
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">M</div><span class="brand-name">MXP Suite</span></div>
+    <nav class="nav" id="nav">
+      <button data-page="download"><i class="i" style="--i:url(icons/download.png)"></i><span class="nav-label">Descargar</span></button>
+      <button data-page="transcribe"><i class="i" style="--i:url(icons/file-text.png)"></i><span class="nav-label">Transcribir</span><span class="badge">Nuevo</span></button>
+      <button data-page="convert"><i class="i" style="--i:url(icons/refresh.png)"></i><span class="nav-label">Convertir</span></button>
+      <button data-page="compress"><i class="i" style="--i:url(icons/arrows-minimize.png)"></i><span class="nav-label">Comprimir</span></button>
+      <button data-page="history"><i class="i" style="--i:url(icons/history.png)"></i><span class="nav-label">Historial</span></button>
+    </nav>
+    <div class="side-foot"><span id="version">v4.0.0</span><br>Local y gratis</div>
+  </aside>
+
+  <!-- ── Páginas ── -->
+  <main class="page">
+    <div id="tools-banner" class="banner" hidden></div>
+
+    <!-- Descargar -->
+    <section data-page="download">
+      <h1>Descargar</h1>
+      <p class="sub">YouTube, TikTok, Instagram, Facebook, X y más de 1.000 sitios</p>
+
+      <div class="row spread">
+        <div class="row"><span class="label">URL del video</span>
+          <button class="chip" id="multi-toggle"><i class="i sm" style="--i:url(icons/list.png)"></i>Varios videos</button></div>
+        <span class="platform" id="platform" hidden></span>
+      </div>
+
+      <div class="urlbar" id="single-url">
+        <div class="field">
+          <input class="input" id="url" placeholder="Pega aquí el enlace del video" spellcheck="false" autocomplete="off">
+          <button class="clear" id="url-clear" title="Borrar" hidden>✕</button>
+        </div>
+        <button class="btn" id="paste"><i class="i sm" style="--i:url(icons/clipboard.png)"></i>Pegar</button>
+        <button class="btn primary" id="go"><i class="i sm" style="--i:url(icons/download.png)"></i>Descargar</button>
+      </div>
+      <div id="multi-url" hidden>
+        <textarea class="input" id="urls" style="width:100%;margin-top:8px" placeholder="Un enlace por línea" spellcheck="false"></textarea>
+        <div class="row spread" style="margin-top:8px">
+          <span class="hint" id="multi-count">0 enlaces</span>
+          <button class="btn primary" id="go-multi"><i class="i sm" style="--i:url(icons/download.png)"></i>Descargar todos</button>
+        </div>
+      </div>
+
+      <div class="preview" id="preview">
+        <div class="thumb" id="thumb">Sin vista previa</div>
+        <div class="meta" id="meta"><div class="details">Pega un enlace para ver qué vas a descargar.</div></div>
+      </div>
+
+      <div class="modes">
+        <button class="mode" data-mode="video"><i class="i" style="--i:url(icons/movie.png)"></i><b>Video</b><span id="mode-video-detail">MP4 · 1080p</span></button>
+        <button class="mode" data-mode="audio"><i class="i" style="--i:url(icons/music.png)"></i><b>Audio</b><span id="mode-audio-detail">MP3 · 320k</span></button>
+        <button class="mode" data-mode="text"><i class="i" style="--i:url(icons/file-text.png)"></i><b>Texto</b><span>Transcribir a texto</span></button>
+      </div>
+
+      <div class="options">
+        <label id="opt-res"><span class="tiny-label">Resolución</span>
+          <select class="input" id="resolution">
+            <option value="">Máxima calidad</option><option value="2160">4K (2160p)</option><option value="1440">2K (1440p)</option>
+            <option value="1080">1080p Full HD</option><option value="720">720p HD</option><option value="480">480p</option><option value="360">360p</option>
+          </select></label>
+        <label id="opt-vfmt"><span class="tiny-label">Formato</span>
+          <select class="input" id="video-format"><option>MP4</option><option>MKV</option><option>WEBM</option><option>MOV</option></select></label>
+        <label id="opt-afmt" hidden><span class="tiny-label">Formato</span>
+          <select class="input" id="audio-format"><option>MP3</option><option>M4A</option><option>WAV</option><option>FLAC</option><option>OPUS</option></select></label>
+        <label id="opt-abr" hidden><span class="tiny-label">Calidad</span>
+          <select class="input" id="audio-bitrate"><option value="320">320 kbps</option><option value="256">256 kbps</option><option value="192">192 kbps</option><option value="128">128 kbps</option></select></label>
+      </div>
+
+      <div class="row spread" style="margin-top:16px">
+        <div class="row">
+          <button class="chip" data-panel="trim"><i class="i sm" style="--i:url(icons/cut.png)"></i>Recortar</button>
+          <button class="chip" data-panel="cookies"><i class="i sm" style="--i:url(icons/cookie.png)"></i>Cookies</button>
+          <button class="chip" data-panel="dest"><i class="i sm" style="--i:url(icons/folder.png)"></i>Destino</button>
+        </div>
+        <button class="link" id="open-folder">Abrir carpeta</button>
+      </div>
+
+      <div class="panel" data-panel="trim" hidden>
+        <div class="row">
+          <label><span class="tiny-label">Desde (mm:ss)</span><input class="input" id="trim-start" placeholder="0:00" style="width:110px;height:34px"></label>
+          <label><span class="tiny-label">Hasta (mm:ss)</span><input class="input" id="trim-end" placeholder="final" style="width:110px;height:34px"></label>
+        </div>
+        <p class="hint">Solo se descarga ese tramo, con el corte exacto. Vacío = el video entero.</p>
+      </div>
+      <div class="panel" data-panel="cookies" hidden>
+        <div class="row">
+          <label><span class="tiny-label">Usar la sesión de</span>
+            <select class="input" id="cookies-browser">
+              <option value="">Ninguno</option><option value="chrome">Chrome</option><option value="edge">Edge</option>
+              <option value="firefox">Firefox</option><option value="brave">Brave</option><option value="opera">Opera</option><option value="vivaldi">Vivaldi</option>
+            </select></label>
+          <button class="btn" id="cookies-file-btn" style="margin-top:16px">Archivo cookies.txt…</button>
+          <span class="hint" id="cookies-file" style="margin-top:16px"></span>
+        </div>
+        <p class="hint">Sirve para videos privados, con restricción de edad o cuando YouTube pide verificar que no eres un bot. Cierra el navegador antes de descargar.</p>
+      </div>
+      <div class="panel" data-panel="dest" hidden>
+        <div class="row">
+          <input class="input" id="out-dir" readonly style="flex:1;height:34px">
+          <button class="btn" id="out-dir-btn">Cambiar…</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Transcribir / Convertir / Comprimir: se rellenan en sus fases -->
+    <section data-page="transcribe" hidden><h1>Transcribir</h1><p class="sub">Audio, video o enlace a texto, 100 % local</p><div class="panel" id="transcribe-root">Cargando…</div></section>
+    <section data-page="convert" hidden><h1>Convertir</h1><p class="sub">Video, audio e imágenes a otro formato</p><div class="panel" id="convert-root">Cargando…</div></section>
+    <section data-page="compress" hidden><h1>Comprimir</h1><p class="sub">Reduce el peso para WhatsApp, Discord o lo que necesites</p><div class="panel" id="compress-root">Cargando…</div></section>
+
+    <!-- Historial -->
+    <section data-page="history" hidden>
+      <div class="row spread"><div><h1>Historial</h1><p class="sub">Tus últimas 100 descargas</p></div>
+        <button class="btn" id="history-clear"><i class="i sm" style="--i:url(icons/trash.png)"></i>Borrar historial</button></div>
+      <div class="list" id="history-list"></div>
+    </section>
+  </main>
+
+  <!-- ── Cola ── -->
+  <aside class="queue">
+    <header>Cola <button class="link" id="queue-clear">Limpiar</button></header>
+    <div class="queue-list" id="queue">
+      <div class="empty" id="queue-empty"><i class="i lg" style="--i:url(icons/list.png)"></i><b>Nada en cola</b>Las descargas y transcripciones aparecerán aquí.</div>
+    </div>
+  </aside>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
 </body>
 </html>

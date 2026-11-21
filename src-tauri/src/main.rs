@@ -7,6 +7,7 @@ mod logs;
 mod paths;
 mod platform;
 mod selftest;
+mod store;
 mod tools;
 
 use tauri::Manager;
@@ -41,6 +42,9 @@ fn main() {
                 let _ = w.set_focus();
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(commands::Jobs::default())
         .invoke_handler(tauri::generate_handler![
             commands::tools_status,
@@ -49,6 +53,10 @@ fn main() {
             commands::download_cancel,
             commands::video_info,
             commands::playlist_expand,
+            commands::settings_load,
+            commands::settings_save,
+            commands::history_list,
+            commands::history_clear,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

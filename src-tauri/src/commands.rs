@@ -57,7 +57,15 @@ pub fn download_start(app: AppHandle, jobs: State<'_, Jobs>, request: Request) -
         let emit = |p: &download::Progress| {
             let _ = app.emit("download", JobEvent { id, progress: p });
         };
-        download::download(&request, &cancel, &emit);
+        let p = download::download(&request, &cancel, &emit);
+        if p.status == "finished" {
+            crate::store::add_history(
+                p.title.as_deref().unwrap_or("Sin título"),
+                &request.url,
+                &request.format,
+                p.file.as_ref().map(|f| f.display().to_string()),
+            );
+        }
         use tauri::Manager;
         app.state::<Jobs>().running.lock().unwrap().remove(&id);
     });
@@ -102,4 +110,24 @@ pub async fn playlist_expand(
     })
     .await
     .expect("hilo de playlist")
+}
+
+#[tauri::command]
+pub fn settings_load() -> serde_json::Value {
+    crate::store::load_settings()
+}
+
+#[tauri::command]
+pub fn settings_save(settings: serde_json::Value) {
+    crate::store::save_settings(&settings)
+}
+
+#[tauri::command]
+pub fn history_list() -> Vec<crate::store::HistoryEntry> {
+    crate::store::history()
+}
+
+#[tauri::command]
+pub fn history_clear() {
+    crate::store::clear_history()
 }
