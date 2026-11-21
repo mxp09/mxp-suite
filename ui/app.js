@@ -242,6 +242,16 @@ function renderQueue() {
         : `<div class="s">${status}</div>`}
       <div class="bar"><i style="width:${j.state === 'done' ? 100 : j.percent || 0}%"></i></div>
       <div class="acts"></div>`;
+    // Lo ya terminado (listo, con error o cancelado) se puede quitar uno a uno.
+    if (['done', 'failed', 'cancelled'].includes(j.state)) {
+      const x = document.createElement('button');
+      x.className = 'x';
+      x.title = 'Quitar de la cola';
+      x.setAttribute('aria-label', 'Quitar de la cola');
+      x.textContent = '✕';
+      x.onclick = () => { queue.splice(queue.indexOf(j), 1); renderQueue(); };
+      el.prepend(x);
+    }
     const acts = $('.acts', el);
     const btn = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; acts.append(b); };
     if (j.kind === 'media') {
