@@ -28,7 +28,7 @@ Note "vcomp140 en System32" (Test-Path "$env:SystemRoot\System32\vcomp140.dll")
 Note "python en PATH" ([bool](Get-Command python -ErrorAction SilentlyContinue))
 
 $setup = Get-ChildItem "$Inst\MXP_Downloader_Setup_v4*.exe" | Select-Object -First 1
-$args = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOMODELS", "/LOG=`"$Out\install.log`"")
+$args = @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOMODELS=1", "/LOG=`"$Out\install.log`"")
 
 if ($Scenario -eq "upgrade") {
     # La 3.2.1 real, con un historial y ajustes de usuario que deben sobrevivir.
